@@ -46,6 +46,7 @@ module.exports = function(grunt) {
             "src/tmstilesource.js",
             "src/zoomifytilesource.js",
             "src/legacytilesource.js",
+            "src/flextilesource.js",
             "src/imagetilesource.js",
             "src/tilesourcecollection.js",
             "src/button.js",
