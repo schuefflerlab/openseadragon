@@ -16,3 +16,10 @@ If you want to use OpenSeadragon in your own projects, you can find the latest s
 ## License
 
 OpenSeadragon is released under the New BSD license. For details, see the [LICENSE.txt file](https://github.com/openseadragon/openseadragon/blob/master/LICENSE.txt).
+
+## FlexTileSource
+
+A flexible tile source<sup>1</sup> that allows for the specification of tiled image pyramids with levels of arbitrary dimensions and tile sizes.
+
+<sup>1</sup> Schüffler PJ, Ozcan GG, Al-Ahmadie H, Fuchs TJ. Flextilesource: An openseadragon extension for efficient whole-slide image visualization. J Pathol Inform 2021;12:31
+(https://www.doi.org/10.4103/jpi.jpi_13_21)
