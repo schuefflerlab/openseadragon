@@ -2,7 +2,7 @@
  * OpenSeadragon - EventSource
  *
  * Copyright (C) 2009 CodePlex Foundation
- * Copyright (C) 2010-2013 OpenSeadragon contributors
+ * Copyright (C) 2010-2022 OpenSeadragon contributors
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are
@@ -122,6 +122,18 @@ $.EventSource.prototype = {
         }
     },
 
+    /**
+     * Get the amount of handlers registered for a given event.
+     * @param {String} eventName - Name of event to inspect.
+     * @return {number} amount of events
+     */
+    numberOfHandlers: function (eventName) {
+        var events = this.events[ eventName ];
+        if ( !events ) {
+            return 0;
+        }
+        return events.length;
+    },
 
     /**
      * Remove all event handlers for a given event type. If no type is given all

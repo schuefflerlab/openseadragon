@@ -2,7 +2,7 @@
  * OpenSeadragon - Rect
  *
  * Copyright (C) 2009 CodePlex Foundation
- * Copyright (C) 2010-2013 OpenSeadragon contributors
+ * Copyright (C) 2010-2022 OpenSeadragon contributors
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are
@@ -230,7 +230,7 @@ $.Rect.prototype = {
      * Returns the width and height component as a vector OpenSeadragon.Point
      * @function
      * @returns {OpenSeadragon.Point} The 2 dimensional vector representing the
-     *  the width and height of the rectangle.
+     *  width and height of the rectangle.
      */
     getSize: function() {
         return new $.Point(this.width, this.height);

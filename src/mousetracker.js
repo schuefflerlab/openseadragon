@@ -2,7 +2,7 @@
  * OpenSeadragon - MouseTracker
  *
  * Copyright (C) 2009 CodePlex Foundation
- * Copyright (C) 2010-2013 OpenSeadragon contributors
+ * Copyright (C) 2010-2022 OpenSeadragon contributors
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are
@@ -165,8 +165,8 @@
         this.dblClickTimeThreshold = options.dblClickTimeThreshold || $.DEFAULT_SETTINGS.dblClickTimeThreshold;
         /**
          * The maximum distance allowed between two pointer click events
-         * to be treated as a click gesture.
-         * @member {Number} clickDistThreshold
+         * to be treated as a double-click gesture.
+         * @member {Number} dblClickDistThreshold
          * @memberof OpenSeadragon.MouseTracker#
          */
         this.dblClickDistThreshold = options.dblClickDistThreshold || $.DEFAULT_SETTINGS.dblClickDistThreshold;
@@ -1403,7 +1403,6 @@
             --this.contacts;
 
             if (this.contacts < 0) {
-                $.console.warn('GesturePointList.removeContact() Implausible contacts value');
                 this.contacts = 0;
             }
         }
@@ -2823,10 +2822,7 @@
             // If child element relinquishes capture to a parent we may get here
             //   from a pointerleave event while a pointerup event will never be received.
             //   In that case, we'll clean up the contact count
-            if ( (pointsList.type === 'mouse' || pointsList.type === 'pen') &&
-                                                        pointsList.contacts > 0 ) {
-                pointsList.removeContact();
-            }
+            pointsList.removeContact();
 
             listLength = pointsList.removeById( gPoint.id );
         } else {
@@ -3290,13 +3286,12 @@
             gPoint = updateGPoint;
         } else {
             // Initialize for tracking and add to the tracking list (no pointerenter event occurred before this)
-            $.console.warn('pointerdown event on untracked pointer');
+            // NOTE: pointerdown event on untracked pointer
             gPoint.captured = false; // Handled by updatePointerCaptured()
             gPoint.insideElementPressed = true;
             gPoint.insideElement = true;
             gPoint.originalTarget = eventInfo.originalEvent.target;
             startTrackingPointer( pointsList, gPoint );
-            return;
         }
 
         pointsList.addContact();
@@ -3440,8 +3435,8 @@
             releasePoint = updateGPoint.currentPos;
             releaseTime = updateGPoint.currentTime;
         } else {
-            // should never get here...we'll start to track pointer anyway
-            $.console.warn('updatePointerUp(): pointerup on untracked gPoint');
+            // NOTE: updatePointerUp(): pointerup on untracked gPoint
+            // ...we'll start to track pointer again
             gPoint.captured = false; // Handled by updatePointerCaptured()
             gPoint.insideElementPressed = false;
             gPoint.insideElement = true;
@@ -3464,7 +3459,7 @@
                 if ( pointsList.contacts === 0 ) {
 
                     // Release (pressed in our element)
-                    if ( tracker.releaseHandler ) {
+                    if ( tracker.releaseHandler && releasePoint ) {
                         tracker.releaseHandler(
                             {
                                 eventSource:           tracker,
@@ -3566,7 +3561,7 @@
                 eventInfo.shouldReleaseCapture = false;
 
                 // Release (pressed in another element)
-                if ( tracker.releaseHandler ) {
+                if ( tracker.releaseHandler && releasePoint ) {
                     tracker.releaseHandler(
                         {
                             eventSource:           tracker,

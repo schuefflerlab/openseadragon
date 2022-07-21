@@ -2,7 +2,7 @@
  * OpenSeadragon - Viewer
  *
  * Copyright (C) 2009 CodePlex Foundation
- * Copyright (C) 2010-2013 OpenSeadragon contributors
+ * Copyright (C) 2010-2022 OpenSeadragon contributors
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are
@@ -366,23 +366,24 @@ $.Viewer = function( options ) {
 
     // Create the viewport
     this.viewport = new $.Viewport({
-        containerSize:      THIS[ this.hash ].prevContainerSize,
-        springStiffness:    this.springStiffness,
-        animationTime:      this.animationTime,
-        minZoomImageRatio:  this.minZoomImageRatio,
-        maxZoomPixelRatio:  this.maxZoomPixelRatio,
-        visibilityRatio:    this.visibilityRatio,
-        wrapHorizontal:     this.wrapHorizontal,
-        wrapVertical:       this.wrapVertical,
-        defaultZoomLevel:   this.defaultZoomLevel,
-        minZoomLevel:       this.minZoomLevel,
-        maxZoomLevel:       this.maxZoomLevel,
-        viewer:             this,
-        degrees:            this.degrees,
-        flipped:            this.flipped,
-        navigatorRotate:    this.navigatorRotate,
-        homeFillsViewer:    this.homeFillsViewer,
-        margins:            this.viewportMargins
+        containerSize:              THIS[ this.hash ].prevContainerSize,
+        springStiffness:            this.springStiffness,
+        animationTime:              this.animationTime,
+        minZoomImageRatio:          this.minZoomImageRatio,
+        maxZoomPixelRatio:          this.maxZoomPixelRatio,
+        visibilityRatio:            this.visibilityRatio,
+        wrapHorizontal:             this.wrapHorizontal,
+        wrapVertical:               this.wrapVertical,
+        defaultZoomLevel:           this.defaultZoomLevel,
+        minZoomLevel:               this.minZoomLevel,
+        maxZoomLevel:               this.maxZoomLevel,
+        viewer:                     this,
+        degrees:                    this.degrees,
+        flipped:                    this.flipped,
+        navigatorRotate:            this.navigatorRotate,
+        homeFillsViewer:            this.homeFillsViewer,
+        margins:                    this.viewportMargins,
+        silenceMultiImageWarnings:  this.silenceMultiImageWarnings
     });
 
     this.viewport._setContentBounds(this.world.getHomeBounds(), this.world.getContentFactor());
@@ -430,6 +431,7 @@ $.Viewer = function( options ) {
     //Instantiate a navigator if configured
     if ( this.showNavigator){
         this.navigator = new $.Navigator({
+            element:           this.navigatorElement,
             id:                this.navigatorId,
             position:          this.navigatorPosition,
             sizeRatio:         this.navigatorSizeRatio,
@@ -504,6 +506,12 @@ $.extend( $.Viewer.prototype, $.EventSource.prototype, $.ControlDock.prototype, 
     openTileSource: function ( tileSource ) {
         $.console.error( "[Viewer.openTileSource] this function is deprecated; use Viewer.open() instead." );
         return this.open( tileSource );
+    },
+
+    //deprecated
+    get buttons () {
+        $.console.warn('Viewer.buttons is deprecated; Please use Viewer.buttonGroup');
+        return this.buttonGroup;
     },
 
     /**
@@ -1040,8 +1048,8 @@ $.extend( $.Viewer.prototype, $.EventSource.prototype, $.ControlDock.prototype, 
             $.addClass( this.element, 'fullpage' );
             body.appendChild( this.element );
 
-            this.element.style.height = $.getWindowSize().y + 'px';
-            this.element.style.width = $.getWindowSize().x + 'px';
+            this.element.style.height = '100vh';
+            this.element.style.width = '100vw';
 
             if ( this.toolbar && this.toolbar.element ) {
                 this.element.style.height = (
@@ -3282,9 +3290,6 @@ function onCanvasPinch( event ) {
         if ( gestureSettings.pinchToZoom &&
                     (!canvasPinchEventArgs.preventDefaultPanAction || !canvasPinchEventArgs.preventDefaultZoomAction) ) {
             centerPt = this.viewport.pointFromPixel( event.center, true );
-            if ( !canvasPinchEventArgs.preventDefaultZoomAction ) {
-                this.viewport.zoomBy( event.distance / event.lastDistance, centerPt, true );
-            }
             if ( gestureSettings.zoomToRefPoint && !canvasPinchEventArgs.preventDefaultPanAction ) {
                 lastCenterPt = this.viewport.pointFromPixel( event.lastCenter, true );
                 panByPt = lastCenterPt.minus( centerPt );
@@ -3295,6 +3300,9 @@ function onCanvasPinch( event ) {
                     panByPt.y = 0;
                 }
                 this.viewport.panBy(panByPt, true);
+            }
+            if ( !canvasPinchEventArgs.preventDefaultZoomAction ) {
+                this.viewport.zoomBy( event.distance / event.lastDistance, centerPt, true );
             }
             this.viewport.applyConstraints();
         }

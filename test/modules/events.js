@@ -425,7 +425,7 @@
                 clickCount:            2,
                 dblClickCount:         1,
                 dragCount:             0,
-                dragEndCount:          2, // v2.5.0+ drag-end event now fired even if pointer didn't move (#1459)
+                dragEndCount:          0, // drag-end event no longer fired if pointer didn't move (#2064)
                 insideElementPressed:  true,
                 insideElementReleased: true,
                 contacts:              0,
@@ -453,7 +453,7 @@
                 clickCount:            1,
                 dblClickCount:         0,
                 dragCount:             0,
-                dragEndCount:          1, // v2.5.0+ drag-end event now fired even if pointer didn't move (#1459)
+                dragEndCount:          0, // drag-end event no longer fired if pointer didn't move (#2064)
                 insideElementPressed:  true,
                 insideElementReleased: true,
                 contacts:              0,
@@ -1152,6 +1152,36 @@
     });
 
     // ----------
+    QUnit.test( 'Viewer: event count test with \'tile-drawing\'', function (assert) {
+        var done = assert.async();
+        assert.ok(viewer.numberOfHandlers('tile-drawing') === 0,
+            "'tile-drawing' event is empty by default.");
+
+        var tileDrawing = function ( event ) {
+            viewer.removeHandler( 'tile-drawing', tileDrawing );
+            assert.ok(viewer.numberOfHandlers('tile-drawing') === 0,
+                "'tile-drawing' deleted: count is 0.");
+            viewer.close();
+            done();
+        };
+
+        var tileDrawingDummy = function ( event ) {};
+
+        viewer.addHandler( 'tile-drawing', tileDrawing );
+        assert.ok(viewer.numberOfHandlers('tile-drawing') === 1,
+            "'tile-drawing' event set to 1.");
+
+        viewer.addHandler( 'tile-drawing', tileDrawingDummy );
+        assert.ok(viewer.numberOfHandlers('tile-drawing') === 2,
+            "'tile-drawing' event set to 2.");
+
+        viewer.removeHandler( 'tile-drawing', tileDrawingDummy );
+        assert.ok(viewer.numberOfHandlers('tile-drawing') === 1,
+            "'tile-drawing' deleted once: count is 1.");
+
+        viewer.open( '/test/data/testpattern.dzi' );
+    } );
+
     QUnit.test( 'Viewer: tile-drawing event', function (assert) {
         var done = assert.async();
         var tileDrawing = function ( event ) {

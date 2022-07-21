@@ -2,7 +2,7 @@
  * OpenSeadragon - Viewport
  *
  * Copyright (C) 2009 CodePlex Foundation
- * Copyright (C) 2010-2013 OpenSeadragon contributors
+ * Copyright (C) 2010-2022 OpenSeadragon contributors
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are
@@ -54,6 +54,7 @@
  * @param {Number} [options.maxZoomLevel] - See maxZoomLevel in {@link OpenSeadragon.Options}.
  * @param {Number} [options.degrees] - See degrees in {@link OpenSeadragon.Options}.
  * @param {Boolean} [options.homeFillsViewer] - See homeFillsViewer in {@link OpenSeadragon.Options}.
+ * @param {Boolean} [options.silenceMultiImageWarnings] - See silenceMultiImageWarnings in {@link OpenSeadragon.Options}.
  */
 $.Viewport = function( options ) {
 
@@ -96,19 +97,20 @@ $.Viewport = function( options ) {
         viewer:           null,
 
         //configurable options
-        springStiffness:    $.DEFAULT_SETTINGS.springStiffness,
-        animationTime:      $.DEFAULT_SETTINGS.animationTime,
-        minZoomImageRatio:  $.DEFAULT_SETTINGS.minZoomImageRatio,
-        maxZoomPixelRatio:  $.DEFAULT_SETTINGS.maxZoomPixelRatio,
-        visibilityRatio:    $.DEFAULT_SETTINGS.visibilityRatio,
-        wrapHorizontal:     $.DEFAULT_SETTINGS.wrapHorizontal,
-        wrapVertical:       $.DEFAULT_SETTINGS.wrapVertical,
-        defaultZoomLevel:   $.DEFAULT_SETTINGS.defaultZoomLevel,
-        minZoomLevel:       $.DEFAULT_SETTINGS.minZoomLevel,
-        maxZoomLevel:       $.DEFAULT_SETTINGS.maxZoomLevel,
-        degrees:            $.DEFAULT_SETTINGS.degrees,
-        flipped:            $.DEFAULT_SETTINGS.flipped,
-        homeFillsViewer:    $.DEFAULT_SETTINGS.homeFillsViewer
+        springStiffness:            $.DEFAULT_SETTINGS.springStiffness,
+        animationTime:              $.DEFAULT_SETTINGS.animationTime,
+        minZoomImageRatio:          $.DEFAULT_SETTINGS.minZoomImageRatio,
+        maxZoomPixelRatio:          $.DEFAULT_SETTINGS.maxZoomPixelRatio,
+        visibilityRatio:            $.DEFAULT_SETTINGS.visibilityRatio,
+        wrapHorizontal:             $.DEFAULT_SETTINGS.wrapHorizontal,
+        wrapVertical:               $.DEFAULT_SETTINGS.wrapVertical,
+        defaultZoomLevel:           $.DEFAULT_SETTINGS.defaultZoomLevel,
+        minZoomLevel:               $.DEFAULT_SETTINGS.minZoomLevel,
+        maxZoomLevel:               $.DEFAULT_SETTINGS.maxZoomLevel,
+        degrees:                    $.DEFAULT_SETTINGS.degrees,
+        flipped:                    $.DEFAULT_SETTINGS.flipped,
+        homeFillsViewer:            $.DEFAULT_SETTINGS.homeFillsViewer,
+        silenceMultiImageWarnings:  $.DEFAULT_SETTINGS.silenceMultiImageWarnings
 
     }, options );
 
@@ -498,36 +500,62 @@ $.Viewport.prototype = {
         if (this.wrapHorizontal) {
             //do nothing
         } else {
-            var horizontalThreshold = this.visibilityRatio * newBounds.width;
             var boundsRight = newBounds.x + newBounds.width;
             var contentRight = this._contentBoundsNoRotate.x + this._contentBoundsNoRotate.width;
-            var leftDx = this._contentBoundsNoRotate.x - boundsRight + horizontalThreshold;
-            var rightDx = contentRight - newBounds.x - horizontalThreshold;
 
-            if (horizontalThreshold > this._contentBoundsNoRotate.width) {
-                newBounds.x += (leftDx + rightDx) / 2;
-            } else if (rightDx < 0) {
-                newBounds.x += rightDx;
-            } else if (leftDx > 0) {
-                newBounds.x += leftDx;
+            var horizontalThreshold, leftDx, rightDx;
+            if (newBounds.width > this._contentBoundsNoRotate.width) {
+                horizontalThreshold = this.visibilityRatio * this._contentBoundsNoRotate.width;
+                leftDx = this._contentBoundsNoRotate.x - newBounds.x + horizontalThreshold;
+                rightDx = contentRight - boundsRight - horizontalThreshold;
+
+                if (rightDx > 0) {
+                    newBounds.x += rightDx;
+                } else if (leftDx < 0) {
+                    newBounds.x += leftDx;
+                }
+            } else {
+                horizontalThreshold = this.visibilityRatio * newBounds.width;
+                leftDx = this._contentBoundsNoRotate.x - boundsRight + horizontalThreshold;
+                rightDx = contentRight - newBounds.x - horizontalThreshold;
+                if (horizontalThreshold > this._contentBoundsNoRotate.width) {
+                    newBounds.x += (leftDx + rightDx) / 2;
+                } else if (rightDx < 0) {
+                    newBounds.x += rightDx;
+                } else if (leftDx > 0) {
+                    newBounds.x += leftDx;
+                }
             }
         }
 
         if (this.wrapVertical) {
             //do nothing
         } else {
-            var verticalThreshold   = this.visibilityRatio * newBounds.height;
             var boundsBottom = newBounds.y + newBounds.height;
             var contentBottom = this._contentBoundsNoRotate.y + this._contentBoundsNoRotate.height;
-            var topDy = this._contentBoundsNoRotate.y - boundsBottom + verticalThreshold;
-            var bottomDy = contentBottom - newBounds.y - verticalThreshold;
 
-            if (verticalThreshold > this._contentBoundsNoRotate.height) {
-                newBounds.y += (topDy + bottomDy) / 2;
-            } else if (bottomDy < 0) {
-                newBounds.y += bottomDy;
-            } else if (topDy > 0) {
-                newBounds.y += topDy;
+            var verticalThreshold, topDy, bottomDy;
+            if (newBounds.height > this._contentBoundsNoRotate.height) {
+                verticalThreshold = this.visibilityRatio * this._contentBoundsNoRotate.height;
+                topDy = this._contentBoundsNoRotate.y - newBounds.y + verticalThreshold;
+                bottomDy = contentBottom - boundsBottom - verticalThreshold;
+
+                if (bottomDy > 0) {
+                    newBounds.y += bottomDy;
+                } else if (topDy < 0) {
+                    newBounds.y += topDy;
+                }
+            } else {
+                verticalThreshold = this.visibilityRatio * newBounds.height;
+                topDy = this._contentBoundsNoRotate.y - boundsBottom + verticalThreshold;
+                bottomDy = contentBottom - newBounds.y - verticalThreshold;
+                if (verticalThreshold > this._contentBoundsNoRotate.height) {
+                    newBounds.y += (topDy + bottomDy) / 2;
+                } else if (bottomDy < 0) {
+                    newBounds.y += bottomDy;
+                } else if (topDy > 0) {
+                    newBounds.y += topDy;
+                }
             }
         }
 
@@ -1170,8 +1198,10 @@ $.Viewport.prototype = {
         if (this.viewer) {
             var count = this.viewer.world.getItemCount();
             if (count > 1) {
-                $.console.error('[Viewport.viewportToImageCoordinates] is not accurate ' +
-                    'with multi-image; use TiledImage.viewportToImageCoordinates instead.');
+                if (!this.silenceMultiImageWarnings) {
+                    $.console.error('[Viewport.viewportToImageCoordinates] is not accurate ' +
+                        'with multi-image; use TiledImage.viewportToImageCoordinates instead.');
+                }
             } else if (count === 1) {
                 // It is better to use TiledImage.viewportToImageCoordinates
                 // because this._contentBoundsNoRotate can not be relied on
@@ -1214,8 +1244,10 @@ $.Viewport.prototype = {
         if (this.viewer) {
             var count = this.viewer.world.getItemCount();
             if (count > 1) {
-                $.console.error('[Viewport.imageToViewportCoordinates] is not accurate ' +
-                    'with multi-image; use TiledImage.imageToViewportCoordinates instead.');
+                if (!this.silenceMultiImageWarnings) {
+                    $.console.error('[Viewport.imageToViewportCoordinates] is not accurate ' +
+                        'with multi-image; use TiledImage.imageToViewportCoordinates instead.');
+                }
             } else if (count === 1) {
                 // It is better to use TiledImage.viewportToImageCoordinates
                 // because this._contentBoundsNoRotate can not be relied on
@@ -1256,8 +1288,10 @@ $.Viewport.prototype = {
         if (this.viewer) {
             var count = this.viewer.world.getItemCount();
             if (count > 1) {
-                $.console.error('[Viewport.imageToViewportRectangle] is not accurate ' +
-                    'with multi-image; use TiledImage.imageToViewportRectangle instead.');
+                if (!this.silenceMultiImageWarnings) {
+                    $.console.error('[Viewport.imageToViewportRectangle] is not accurate ' +
+                       'with multi-image; use TiledImage.imageToViewportRectangle instead.');
+                }
             } else if (count === 1) {
                 // It is better to use TiledImage.imageToViewportRectangle
                 // because this._contentBoundsNoRotate can not be relied on
@@ -1304,8 +1338,10 @@ $.Viewport.prototype = {
         if (this.viewer) {
             var count = this.viewer.world.getItemCount();
             if (count > 1) {
-                $.console.error('[Viewport.viewportToImageRectangle] is not accurate ' +
-                    'with multi-image; use TiledImage.viewportToImageRectangle instead.');
+                if (!this.silenceMultiImageWarnings) {
+                    $.console.error('[Viewport.viewportToImageRectangle] is not accurate ' +
+                        'with multi-image; use TiledImage.viewportToImageRectangle instead.');
+                }
             } else if (count === 1) {
                 // It is better to use TiledImage.viewportToImageCoordinates
                 // because this._contentBoundsNoRotate can not be relied on
@@ -1469,8 +1505,10 @@ $.Viewport.prototype = {
         if (this.viewer) {
             var count = this.viewer.world.getItemCount();
             if (count > 1) {
-                $.console.error('[Viewport.viewportToImageZoom] is not ' +
-                    'accurate with multi-image.');
+                if (!this.silenceMultiImageWarnings) {
+                    $.console.error('[Viewport.viewportToImageZoom] is not ' +
+                        'accurate with multi-image.');
+                }
             } else if (count === 1) {
                 // It is better to use TiledImage.viewportToImageZoom
                 // because this._contentBoundsNoRotate can not be relied on
@@ -1503,8 +1541,10 @@ $.Viewport.prototype = {
         if (this.viewer) {
             var count = this.viewer.world.getItemCount();
             if (count > 1) {
-                $.console.error('[Viewport.imageToViewportZoom] is not accurate ' +
-                    'with multi-image.');
+                if (!this.silenceMultiImageWarnings) {
+                    $.console.error('[Viewport.imageToViewportZoom] is not accurate ' +
+                        'with multi-image.');
+                }
             } else if (count === 1) {
                 // It is better to use TiledImage.imageToViewportZoom
                 // because this._contentBoundsNoRotate can not be relied on
