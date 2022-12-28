@@ -443,7 +443,7 @@ $.extend($.TiledImage.prototype, $.EventSource.prototype, /** @lends OpenSeadrag
      * @param {Number|OpenSeadragon.Point} viewerX - The X coordinate or point in viewport coordinate system.
      * @param {Number} [viewerY] - The Y coordinate in viewport coordinate system.
      * @param {Boolean} [current=false] - Pass true to use the current location; false for target location.
-     * @return {OpenSeadragon.Point} A point representing the coordinates in the image.
+     * @returns {OpenSeadragon.Point} A point representing the coordinates in the image.
      */
     viewportToImageCoordinates: function(viewerX, viewerY, current) {
         var point;
@@ -478,7 +478,7 @@ $.extend($.TiledImage.prototype, $.EventSource.prototype, /** @lends OpenSeadrag
      * @param {Number|OpenSeadragon.Point} imageX - The X coordinate or point in image coordinate system.
      * @param {Number} [imageY] - The Y coordinate in image coordinate system.
      * @param {Boolean} [current=false] - Pass true to use the current location; false for target location.
-     * @return {OpenSeadragon.Point} A point representing the coordinates in the viewport.
+     * @returns {OpenSeadragon.Point} A point representing the coordinates in the viewport.
      */
     imageToViewportCoordinates: function(imageX, imageY, current) {
         if (imageX instanceof $.Point) {
@@ -509,7 +509,7 @@ $.extend($.TiledImage.prototype, $.EventSource.prototype, /** @lends OpenSeadrag
      * @param {Number} [pixelWidth] - The width in pixel of the rectangle.
      * @param {Number} [pixelHeight] - The height in pixel of the rectangle.
      * @param {Boolean} [current=false] - Pass true to use the current location; false for target location.
-     * @return {OpenSeadragon.Rect} A rect representing the coordinates in the viewport.
+     * @returns {OpenSeadragon.Rect} A rect representing the coordinates in the viewport.
      */
     imageToViewportRectangle: function(imageX, imageY, pixelWidth, pixelHeight, current) {
         var rect = imageX;
@@ -541,7 +541,7 @@ $.extend($.TiledImage.prototype, $.EventSource.prototype, /** @lends OpenSeadrag
      * @param {Number} [pointWidth] - The width in viewport coordinate system.
      * @param {Number} [pointHeight] - The height in viewport coordinate system.
      * @param {Boolean} [current=false] - Pass true to use the current location; false for target location.
-     * @return {OpenSeadragon.Rect} A rect representing the coordinates in the image.
+     * @returns {OpenSeadragon.Rect} A rect representing the coordinates in the image.
      */
     viewportToImageRectangle: function( viewerX, viewerY, pointWidth, pointHeight, current ) {
         var rect = viewerX;
@@ -1480,7 +1480,7 @@ $.extend($.TiledImage.prototype, $.EventSource.prototype, /** @lends OpenSeadrag
             bounds,
             sourceBounds,
             exists,
-            url,
+            urlOrGetter,
             post,
             ajaxHeaders,
             context2D,
@@ -1501,7 +1501,7 @@ $.extend($.TiledImage.prototype, $.EventSource.prototype, /** @lends OpenSeadrag
             bounds  = this.getTileBounds( level, x, y );
             sourceBounds = tileSource.getTileBounds( level, xMod, yMod, true );
             exists  = tileSource.tileExists( level, xMod, yMod );
-            url     = tileSource.getTileUrl( level, xMod, yMod );
+            urlOrGetter     = tileSource.getTileUrl( level, xMod, yMod );
             post    = tileSource.getTilePostData( level, xMod, yMod );
 
             // Headers are only applicable if loadTilesWithAjax is set
@@ -1524,13 +1524,13 @@ $.extend($.TiledImage.prototype, $.EventSource.prototype, /** @lends OpenSeadrag
                 y,
                 bounds,
                 exists,
-                url,
+                urlOrGetter,
                 context2D,
                 this.loadTilesWithAjax,
                 ajaxHeaders,
                 sourceBounds,
                 post,
-                tileSource.getTileHashKey(level, xMod, yMod, url, ajaxHeaders, post)
+                tileSource.getTileHashKey(level, xMod, yMod, urlOrGetter, ajaxHeaders, post)
             );
 
             if (this.getFlip()) {
@@ -1569,7 +1569,7 @@ $.extend($.TiledImage.prototype, $.EventSource.prototype, /** @lends OpenSeadrag
         var _this = this;
         tile.loading = true;
         this._imageLoader.addJob({
-            src: tile.url,
+            src: tile.getUrl(),
             tile: tile,
             source: this.source,
             postData: tile.postData,
@@ -1598,7 +1598,7 @@ $.extend($.TiledImage.prototype, $.EventSource.prototype, /** @lends OpenSeadrag
      */
     _onTileLoad: function( tile, time, data, errorMsg, tileRequest ) {
         if ( !data ) {
-            $.console.error( "Tile %s failed to load: %s - error: %s", tile, tile.url, errorMsg );
+            $.console.error( "Tile %s failed to load: %s - error: %s", tile, tile.getUrl(), errorMsg );
             /**
              * Triggered when a tile fails to load.
              *
@@ -1624,7 +1624,7 @@ $.extend($.TiledImage.prototype, $.EventSource.prototype, /** @lends OpenSeadrag
         }
 
         if ( time < this.lastResetTime ) {
-            $.console.warn( "Ignoring tile %s loaded before reset: %s", tile, tile.url );
+            $.console.warn( "Ignoring tile %s loaded before reset: %s", tile, tile.getUrl() );
             tile.loading = false;
             return;
         }
@@ -1669,7 +1669,7 @@ $.extend($.TiledImage.prototype, $.EventSource.prototype, /** @lends OpenSeadrag
                 tile.loading = false;
                 tile.loaded = true;
                 tile.hasTransparency = _this.source.hasTransparency(
-                    tile.context2D, tile.url, tile.ajaxHeaders, tile.postData
+                    tile.context2D, tile.getUrl(), tile.ajaxHeaders, tile.postData
                 );
                 if (!tile.context2D) {
                     _this._tileCache.cacheTile({
@@ -1690,7 +1690,7 @@ $.extend($.TiledImage.prototype, $.EventSource.prototype, /** @lends OpenSeadrag
          * @event tile-loaded
          * @memberof OpenSeadragon.Viewer
          * @type {object}
-         * @property {Image || *} image - The image (data) of the tile. Deprecated.
+         * @property {Image|*} image - The image (data) of the tile. Deprecated.
          * @property {*} data image data, the data sent to ImageJob.prototype.finish(), by default an Image object
          * @property {OpenSeadragon.TiledImage} tiledImage - The tiled image of the loaded tile.
          * @property {OpenSeadragon.Tile} tile - The tile which has been loaded.
@@ -1852,7 +1852,7 @@ $.extend($.TiledImage.prototype, $.EventSource.prototype, /** @lends OpenSeadrag
             useSketch = this.opacity < 1 ||
                 (this.compositeOperation && this.compositeOperation !== 'source-over') ||
                 (!this._isBottomItem() &&
-                    this.source.hasTransparency(tile.context2D, tile.url, tile.ajaxHeaders, tile.postData));
+                    this.source.hasTransparency(tile.context2D, tile.getUrl(), tile.ajaxHeaders, tile.postData));
         }
 
         var sketchScale;

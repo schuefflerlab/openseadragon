@@ -1,3 +1,4 @@
+/* eslint-disable camelcase */
 /* global QUnit, $, Util, testLog */
 
 (function () {
@@ -10,6 +11,7 @@
 
             testLog.reset();
 
+            // eslint-disable-next-line new-cap
             viewer = OpenSeadragon({
                 id: 'unitsexample',
                 prefixUrl: '/build/openseadragon/images/',

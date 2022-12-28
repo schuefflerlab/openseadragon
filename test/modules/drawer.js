@@ -21,6 +21,7 @@
     // ----------
     var createViewer = function(options) {
         options = options || {};
+        // eslint-disable-next-line new-cap
         viewer = OpenSeadragon(OpenSeadragon.extend({
             id:            'example',
             prefixUrl:     '/build/openseadragon/images/',

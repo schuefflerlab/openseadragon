@@ -134,7 +134,7 @@ $.IIIFTileSource = function( options ){
 
     if (!options.maxLevel && !this.emulateLegacyImagePyramid) {
         if (!this.scale_factors) {
-            options.maxLevel = Number(Math.ceil(Math.log(Math.max(this.width, this.height), 2)));
+            options.maxLevel = Number(Math.round(Math.log(Math.max(this.width, this.height), 2)));
         } else {
             var maxScaleFactor = Math.max.apply(null, this.scale_factors);
             options.maxLevel = Math.round(Math.log(maxScaleFactor) * Math.LOG2E);
@@ -193,7 +193,7 @@ $.extend( $.IIIFTileSource.prototype, $.TileSource.prototype, /** @lends OpenSea
      * @param {Object} data - the raw configuration
      * @param {String} url - the url configuration was retrieved from
      * @param {String} postData - HTTP POST data in k=v&k2=v2... form or null
-     * @return {Object} A normalized IIIF data object
+     * @returns {Object} A normalized IIIF data object
      * @example <caption>IIIF 2.x Info Looks like this</caption>
      * {
      * "@context": "http://iiif.io/api/image/2/context.json",
@@ -377,8 +377,8 @@ $.extend( $.IIIFTileSource.prototype, $.TileSource.prototype, /** @lends OpenSea
             scale = Math.pow( 0.5, this.maxLevel - level ),
 
             //# image dimensions at this level
-            levelWidth = Math.ceil( this.width * scale ),
-            levelHeight = Math.ceil( this.height * scale ),
+            levelWidth = Math.round( this.width * scale ),
+            levelHeight = Math.round( this.height * scale ),
 
             //## iiif region
             tileWidth,
@@ -398,8 +398,8 @@ $.extend( $.IIIFTileSource.prototype, $.TileSource.prototype, /** @lends OpenSea
 
         tileWidth = this.getTileWidth(level);
         tileHeight = this.getTileHeight(level);
-        iiifTileSizeWidth = Math.ceil( tileWidth / scale );
-        iiifTileSizeHeight = Math.ceil( tileHeight / scale );
+        iiifTileSizeWidth = Math.round( tileWidth / scale );
+        iiifTileSizeHeight = Math.round( tileHeight / scale );
         if (this.version === 1) {
             iiifQuality = "native." + this.tileFormat;
         } else {
@@ -426,8 +426,8 @@ $.extend( $.IIIFTileSource.prototype, $.TileSource.prototype, /** @lends OpenSea
             } else {
                 iiifRegion = [ iiifTileX, iiifTileY, iiifTileW, iiifTileH ].join( ',' );
             }
-            iiifSizeW = Math.ceil( iiifTileW * scale );
-            iiifSizeH = Math.ceil( iiifTileH * scale );
+            iiifSizeW = Math.round( iiifTileW * scale );
+            iiifSizeH = Math.round( iiifTileH * scale );
             if ( this.version === 2 && iiifSizeW === this.width ) {
                 iiifSize = "full";
             } else if ( this.version === 3 && iiifSizeW === this.width && iiifSizeH === this.height ) {
@@ -456,7 +456,7 @@ $.extend( $.IIIFTileSource.prototype, $.TileSource.prototype, /** @lends OpenSea
      * @param {Object} options
      * @param {Array|String} options.profile
      * @param {Number} options.version
-     * @param {String} options.extraFeatures
+     * @param {String[]} options.extraFeatures
      * @returns {Boolean}
      */
     function canBeTiled ( options ) {
