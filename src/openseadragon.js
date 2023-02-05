@@ -495,6 +495,12 @@
   * @property {Number} [timeout=30000]
   *     The max number of milliseconds that an image job may take to complete.
   *
+  * @property {Number} [tileRetryMax=0]
+  *     The max number of retries when a tile download fails. By default it's 0, so retries are disabled.
+  *
+  * @property {Number} [tileRetryDelay=2500]
+  *     Milliseconds to wait after each tile retry if tileRetryMax is set.
+  *
   * @property {Boolean} [useCanvas=true]
   *     Set to false to not use an HTML canvas element for image rendering even if canvas is supported.
   *
@@ -826,14 +832,16 @@ function OpenSeadragon( options ){
      * @private
      */
     var class2type = {
-            '[object Boolean]':     'boolean',
-            '[object Number]':      'number',
-            '[object String]':      'string',
-            '[object Function]':    'function',
-            '[object Array]':       'array',
-            '[object Date]':        'date',
-            '[object RegExp]':      'regexp',
-            '[object Object]':      'object'
+            '[object Boolean]':       'boolean',
+            '[object Number]':        'number',
+            '[object String]':        'string',
+            '[object Function]':      'function',
+            '[object AsyncFunction]': 'function',
+            '[object Promise]':       'promise',
+            '[object Array]':         'array',
+            '[object Date]':          'date',
+            '[object RegExp]':        'regexp',
+            '[object Object]':        'object'
         },
         // Save a reference to some core methods
         toString    = Object.prototype.toString,
@@ -848,7 +856,6 @@ function OpenSeadragon( options ){
     $.isFunction = function( obj ) {
         return $.type(obj) === "function";
     };
-
 
     /**
      * Taken from jQuery 1.6.1
@@ -1354,6 +1361,8 @@ function OpenSeadragon( options ){
             maxImageCacheCount:     200,
             timeout:                30000,
             useCanvas:              true,  // Use canvas element for drawing if available
+            tileRetryMax:           0,
+            tileRetryDelay:         2500,
 
             //INTERFACE RESOURCE SETTINGS
             prefixUrl:              "/images/",
