@@ -2,7 +2,7 @@
  * OpenSeadragon - Navigator
  *
  * Copyright (C) 2009 CodePlex Foundation
- * Copyright (C) 2010-2022 OpenSeadragon contributors
+ * Copyright (C) 2010-2023 OpenSeadragon contributors
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are
@@ -224,19 +224,19 @@ $.Navigator = function( options ){
     this.displayRegionContainer.appendChild(this.displayRegion);
     this.element.getElementsByTagName('div')[0].appendChild(this.displayRegionContainer);
 
-    function rotate(degrees) {
+    function rotate(degrees, immediately) {
         _setTransformRotate(_this.displayRegionContainer, degrees);
         _setTransformRotate(_this.displayRegion, -degrees);
-        _this.viewport.setRotation(degrees);
+        _this.viewport.setRotation(degrees, immediately);
     }
     if (options.navigatorRotate) {
         var degrees = options.viewer.viewport ?
             options.viewer.viewport.getRotation() :
             options.viewer.degrees || 0;
 
-        rotate(degrees);
+        rotate(degrees, true);
         options.viewer.addHandler("rotate", function (args) {
-            rotate(args.degrees);
+            rotate(args.degrees, args.immediately);
         });
     }
 
@@ -324,6 +324,7 @@ $.extend( $.Navigator.prototype, $.EventSource.prototype, $.Viewer.prototype, /*
         this.width = width;
         this.element.style.width = typeof (width) === "number" ? (width + 'px') : width;
         this._resizeWithViewer = false;
+        this.updateSize();
     },
 
     /**
@@ -334,6 +335,7 @@ $.extend( $.Navigator.prototype, $.EventSource.prototype, $.Viewer.prototype, /*
         this.height = height;
         this.element.style.height = typeof (height) === "number" ? (height + 'px') : height;
         this._resizeWithViewer = false;
+        this.updateSize();
     },
 
     /**
@@ -394,6 +396,11 @@ $.extend( $.Navigator.prototype, $.EventSource.prototype, $.Viewer.prototype, /*
             topleft     = this.viewport.pixelFromPointNoRotate(bounds.getTopLeft(), false);
             bottomright = this.viewport.pixelFromPointNoRotate(bounds.getBottomRight(), false)
                 .minus( this.totalBorderWidths );
+
+            if (!this.navigatorRotate) {
+                var degrees = viewport.getRotation(true);
+                _setTransformRotate(this.displayRegion, -degrees);
+            }
 
             //update style for navigator-box
             var style = this.displayRegion.style;

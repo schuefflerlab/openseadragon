@@ -2,7 +2,7 @@
  * OpenSeadragon - ButtonGroup
  *
  * Copyright (C) 2009 CodePlex Foundation
- * Copyright (C) 2010-2022 OpenSeadragon contributors
+ * Copyright (C) 2010-2023 OpenSeadragon contributors
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are
@@ -115,7 +115,7 @@ $.ButtonGroup.prototype = {
     /**
      * Adds the given button to this button group.
      *
-     * @functions
+     * @function
      * @param {OpenSeadragon.Button} button
      */
     addButton: function( button ){
