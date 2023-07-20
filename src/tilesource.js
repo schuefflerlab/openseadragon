@@ -860,6 +860,10 @@ $.TileSource.prototype = {
      * @param {object} cacheObject context cache object
      */
     destroyTileCache: function (cacheObject) {
+        if (cacheObject._renderedContext && cacheObject._renderedContext.canvas) {
+            cacheObject._renderedContext.canvas.width = 0;
+            cacheObject._renderedContext.canvas.height = 0;
+        }
         cacheObject._data = null;
         cacheObject._renderedContext = null;
     },

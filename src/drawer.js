@@ -275,9 +275,9 @@ $.Drawer.prototype = {
      * Destroy the drawer (unload current loaded tiles)
      */
     destroy: function() {
-        //force unloading of current canvas (1x1 will be gc later, trick not necessarily needed)
-        this.canvas.width  = 1;
-        this.canvas.height = 1;
+        //force unloading of current canvas (0x0 will be gc later, trick not necessarily needed)
+        this.canvas.width  = 0;
+        this.canvas.height = 0;
         this.sketchCanvas = null;
         this.sketchContext = null;
     },

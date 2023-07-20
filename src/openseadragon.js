@@ -962,8 +962,11 @@ function OpenSeadragon( options ){
      */
     $.supportsCanvas = (function () {
         var canvasElement = document.createElement( 'canvas' );
-        return !!( $.isFunction( canvasElement.getContext ) &&
+        var supports = !!( $.isFunction( canvasElement.getContext ) &&
                     canvasElement.getContext( '2d' ) );
+        canvasElement.width = 0;
+        canvasElement.height = 0;
+        return supports;
     }());
 
     /**
@@ -1050,6 +1053,8 @@ function OpenSeadragon( options ){
                                     context.msBackingStorePixelRatio ||
                                     context.oBackingStorePixelRatio ||
                                     context.backingStorePixelRatio || 1;
+            context.canvas.width = 0;
+            context.canvas.height = 0;
             return Math.max(devicePixelRatio, 1) / backingStoreRatio;
         } else {
             return 1;
