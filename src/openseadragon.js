@@ -2668,7 +2668,7 @@ function OpenSeadragon( options ){
 
 
     var FILEFORMATS = {
-            bmp:  false,
+            bmp:  true,
             jpeg: true,
             jpg:  true,
             png:  true,
