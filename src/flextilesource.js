@@ -252,7 +252,7 @@ function filterFiles( files ){
     }
 
     return filtered.sort(function(a, b) {
-        return a.height - b.height;
+        return a.width - b.width;
     });
 
 }
