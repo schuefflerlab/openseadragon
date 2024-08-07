@@ -240,6 +240,11 @@
   * @property {Boolean} [flipped=false]
   *     Initial flip state.
   *
+  * @property {Boolean} [overlayPreserveContentDirection=true]
+  *     When the viewport is flipped (by pressing 'f'), the overlay is flipped using ScaleX.
+  *     Normally, this setting (default true) keeps the overlay's content readable by flipping it back.
+  *     To make the content flip with the overlay, set overlayPreserveContentDirection to false.
+  *
   * @property {Number} [minZoomLevel=null]
   *
   * @property {Number} [maxZoomLevel=null]
@@ -1064,8 +1069,9 @@ function OpenSeadragon( options ){
     /**
      * A ratio comparing the device screen's pixel density to the canvas's backing store pixel density,
      * clamped to a minimum of 1. Defaults to 1 if canvas isn't supported by the browser.
-     * @member {Number} pixelDensityRatio
+     * @function getCurrentPixelDensityRatio
      * @memberof OpenSeadragon
+     * @returns {Number}
      */
     $.getCurrentPixelDensityRatio = function() {
         if ( $.supportsCanvas ) {
@@ -1083,6 +1089,8 @@ function OpenSeadragon( options ){
     };
 
     /**
+     * A ratio comparing the device screen's pixel density to the canvas's backing store pixel density,
+     * clamped to a minimum of 1. Defaults to 1 if canvas isn't supported by the browser.
      * @member {Number} pixelDensityRatio
      * @memberof OpenSeadragon
      */
@@ -1356,7 +1364,8 @@ function OpenSeadragon( options ){
             degrees:                    0,
 
             // INITIAL FLIP STATE
-            flipped:                    false,
+            flipped:                          false,
+            overlayPreserveContentDirection:  true,
 
             // APPEARANCE
             opacity:                           1, // to be passed into each TiledImage
