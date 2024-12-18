@@ -50,6 +50,8 @@ module.exports = function(grunt) {
             "src/flextilesource.js",
             "src/imagetilesource.js",
             "src/tilesourcecollection.js",
+            "src/priorityqueue.js",
+            "src/datatypeconvertor.js",
             "src/button.js",
             "src/buttongroup.js",
             "src/rectangle.js",
@@ -79,6 +81,11 @@ module.exports = function(grunt) {
     grunt.event.once('git-describe', function (rev) {
         grunt.config.set('gitInfo', rev);
     });
+
+    let moduleFilter =  '';
+    if (grunt.option('module')) {
+        moduleFilter = '?module=' + grunt.option('module')
+    }
 
     // ----------
     // Project configuration.
@@ -165,7 +172,7 @@ module.exports = function(grunt) {
         qunit: {
             normal: {
                 options: {
-                    urls: [ "http://localhost:8000/test/test.html" ],
+                    urls: [ "http://localhost:8000/test/test.html" + moduleFilter ],
                     timeout: 10000,
                     puppeteer: {
                         headless: 'new'
@@ -174,7 +181,7 @@ module.exports = function(grunt) {
             },
             coverage: {
                 options: {
-                    urls: [ "http://localhost:8000/test/coverage.html" ],
+                    urls: [ "http://localhost:8000/test/coverage.html" + moduleFilter ],
                     coverage: {
                         src: ['src/*.js'],
                         htmlReport: coverageDir + '/html/',
@@ -195,7 +202,12 @@ module.exports = function(grunt) {
             server: {
                 options: {
                     port: 8000,
-                    base: "."
+                    base: {
+                        path: ".",
+                        options: {
+                            stylesheet: 'style.css'
+                        }
+                    }
                 }
             }
         },
