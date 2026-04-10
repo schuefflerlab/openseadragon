@@ -1,8 +1,8 @@
 /* global QUnit, $, testLog */
 
 (function() {
-    var viewer,
-        baseOptions = {
+    let viewer;
+    const baseOptions = {
             id:            'example',
             prefixUrl:     '/build/openseadragon/images/',
             springStiffness: 100 // Faster animation = faster tests
@@ -26,23 +26,22 @@
     // ----------
 
     QUnit.test('Default timeout', function(assert) {
-        var actual,
-            expected = OpenSeadragon.DEFAULT_SETTINGS.timeout,
-            message,
-            options = OpenSeadragon.extend(true, baseOptions, {
+        const expected = OpenSeadragon.DEFAULT_SETTINGS.timeout;
+        const options = OpenSeadragon.extend(true, baseOptions, {
                 imageLoaderLimit: 1
-            }),
-            viewer = OpenSeadragon(options),
-            imageLoader = viewer.imageLoader;
+            });
+        const viewer = OpenSeadragon(options);
+        const imageLoader = viewer.imageLoader;
 
-        message = 'ImageLoader timeout should be set to the default value of ' + expected + ' when none is specified';
-        actual = imageLoader.timeout;
+        let message = 'ImageLoader timeout should be set to the default value of ' + expected + ' when none is specified';
+        let actual = imageLoader.timeout;
         assert.equal(actual, expected, message);
 
         // Manually seize the ImageLoader
         imageLoader.jobsInProgress = imageLoader.jobLimit;
         imageLoader.addJob({
             src: 'test',
+            source: MockSeadragon.getTileSource(),
             loadWithAjax: false,
             crossOriginPolicy: 'test',
             ajaxWithCredentials: false,
@@ -57,23 +56,22 @@
     // ----------
 
     QUnit.test('Configure timeout', function(assert) {
-        var actual,
-            expected = 123456,
-            message,
-            options = OpenSeadragon.extend(true, baseOptions, {
+        const expected = 123456;
+        const options = OpenSeadragon.extend(true, baseOptions, {
                 imageLoaderLimit: 1,
                 timeout: expected
             }),
             viewer = OpenSeadragon(options),
             imageLoader = viewer.imageLoader;
 
-        message = 'ImageLoader timeout should be configurable';
-        actual = imageLoader.timeout;
+        let message = 'ImageLoader timeout should be configurable';
+        let actual = imageLoader.timeout;
         assert.equal(actual, expected, message);
 
         imageLoader.jobsInProgress = imageLoader.jobLimit;
         imageLoader.addJob({
             src: 'test',
+            source: MockSeadragon.getTileSource(),
             loadWithAjax: false,
             crossOriginPolicy: 'test',
             ajaxWithCredentials: false,

@@ -5,6 +5,12 @@
         "eslint:recommended",
         "plugin:compat/recommended"
     ],
+    "ignorePatterns": [
+      "**/*.d.ts",
+      "types/",
+      "test-dts/**/*.ts",
+      "test/lib/*.js"
+    ],
     "env": {
         "es6": true,
         "browser": true

@@ -2,7 +2,7 @@
  * OpenSeadragon - TileSource
  *
  * Copyright (C) 2009 CodePlex Foundation
- * Copyright (C) 2010-2024 OpenSeadragon contributors
+ * Copyright (C) 2010-2025 OpenSeadragon contributors
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are
@@ -36,6 +36,53 @@
 
 
 /**
+ * @typedef {Object} OpenSeadragon.TileSourceOptions
+ * @property {String} [options.url]
+ *      The URL for the data necessary for this TileSource.
+ * @property {String} [options.referenceStripThumbnailUrl]
+ *      The URL for a thumbnail image to be used by the reference strip
+ * @property {Function} [options.success]
+ *      A function to be called upon successful creation.
+ * @property {Boolean} [options.ajaxWithCredentials]
+ *      If this TileSource needs to make an AJAX call, this specifies whether to set
+ *      the XHR's withCredentials (for accessing secure data).
+ * @property {Object} [options.ajaxHeaders]
+ *      A set of headers to include in AJAX requests.
+ * @property {Boolean} [options.splitHashDataForPost]
+ *      First occurrence of '#' in the options.url is used to split URL
+ *      and the latter part is treated as POST data (applies to getImageInfo(...))
+ *      Does not work if getImageInfo() is overridden and used (see the options description)
+ * @property {Number} [options.width]
+ *      Width of the source image at max resolution in pixels.
+ * @property {Number} [options.height]
+ *      Height of the source image at max resolution in pixels.
+ * @property {Number} [options.tileSize]
+ *      The size of the tiles to assumed to make up each pyramid layer in pixels.
+ *      Tile size determines the point at which the image pyramid must be
+ *      divided into a matrix of smaller images.
+ *      Use options.tileWidth and options.tileHeight to support non-square tiles.
+ * @property {Number} [options.tileWidth]
+ *      The width of the tiles to assumed to make up each pyramid layer in pixels.
+ * @property {Number} [options.tileHeight]
+ *      The height of the tiles to assumed to make up each pyramid layer in pixels.
+ * @property {Number} [options.tileOverlap]
+ *      The number of pixels each tile is expected to overlap touching tiles.
+ * @property {Number} [options.minLevel]
+ *      The minimum level to attempt to load.
+ * @property {Number} [options.maxLevel]
+ *      The maximum level to attempt to load.
+ * @property {Boolean} [options.ready=true]
+ *      If true, the event 'ready' is called immediately after the TileSource is created.
+ *      This is important because some flows rely on immediate initialization, which
+ *      computes additional properties like dimensions or aspect ratio.
+ *
+ *
+ *      TODO: could be removed completely:
+ *        - do not use Tiled Image's getImageInfo, implement it separately
+ *        - call getImageInfo as perviously, by default just call raiseEvent('ready', { tileSource: this })
+ */
+
+/**
  * @class TileSource
  * @classdesc The TileSource contains the most basic implementation required to create a
  * smooth transition between layers in an image pyramid. It has only a single key
@@ -52,101 +99,29 @@
  *
  * @memberof OpenSeadragon
  * @extends OpenSeadragon.EventSource
- * @param {Object} options
+ * @param {OpenSeadragon.TileSourceOptions|string} options
  *      You can either specify a URL, or literally define the TileSource (by specifying
  *      width, height, tileSize, tileOverlap, minLevel, and maxLevel). For the former,
  *      the extending class is expected to implement 'supports' and 'configure'.
  *      Note that _in this case, the child class of getImageInfo() is ignored!_
  *      For the latter, the construction is assumed to occur through
  *      the extending classes implementation of 'configure'.
- * @param {String} [options.url]
- *      The URL for the data necessary for this TileSource.
- * @param {String} [options.referenceStripThumbnailUrl]
- *      The URL for a thumbnail image to be used by the reference strip
- * @param {Function} [options.success]
- *      A function to be called upon successful creation.
- * @param {Boolean} [options.ajaxWithCredentials]
- *      If this TileSource needs to make an AJAX call, this specifies whether to set
- *      the XHR's withCredentials (for accessing secure data).
- * @param {Object} [options.ajaxHeaders]
- *      A set of headers to include in AJAX requests.
- * @param {Boolean} [options.splitHashDataForPost]
- *      First occurrence of '#' in the options.url is used to split URL
- *      and the latter part is treated as POST data (applies to getImageInfo(...))
- *      Does not work if getImageInfo() is overridden and used (see the options description)
- * @param {Number} [options.width]
- *      Width of the source image at max resolution in pixels.
- * @param {Number} [options.height]
- *      Height of the source image at max resolution in pixels.
- * @param {Number} [options.tileSize]
- *      The size of the tiles to assumed to make up each pyramid layer in pixels.
- *      Tile size determines the point at which the image pyramid must be
- *      divided into a matrix of smaller images.
- *      Use options.tileWidth and options.tileHeight to support non-square tiles.
- * @param {Number} [options.tileWidth]
- *      The width of the tiles to assumed to make up each pyramid layer in pixels.
- * @param {Number} [options.tileHeight]
- *      The height of the tiles to assumed to make up each pyramid layer in pixels.
- * @param {Number} [options.tileOverlap]
- *      The number of pixels each tile is expected to overlap touching tiles.
- * @param {Number} [options.minLevel]
- *      The minimum level to attempt to load.
- * @param {Number} [options.maxLevel]
- *      The maximum level to attempt to load.
  */
-$.TileSource = function( width, height, tileSize, tileOverlap, minLevel, maxLevel ) {
-    var _this = this;
+$.TileSource = function( options ) {
 
-    var args = arguments,
-        options,
-        i;
+    // NOTE! Manually rewriting this to a class syntax is problematic, since apply(...) would have to be overridden
+    //   static apply( target, args ) {...}
+    // and check if target inherits TileSource and if not, copy all props to the __proto__ of the target
+    $.EventSource.apply( this );
 
-    if( $.isPlainObject( width ) ){
-        options = width;
-    }else{
-        options = {
-            width: args[0],
-            height: args[1],
-            tileSize: args[2],
-            tileOverlap: args[3],
-            minLevel: args[4],
-            maxLevel: args[5]
-        };
-    }
-
-    //Tile sources supply some events, namely 'ready' when they must be configured
-    //by asynchronously fetching their configuration data.
-    $.EventSource.call( this );
-
-    //we allow options to override anything we don't treat as
-    //required via idiomatic options or which is functionally
-    //set depending on the state of the readiness of this tile
-    //source
-    $.extend( true, this, options );
-
-    if (!this.success) {
-        //Any functions that are passed as arguments are bound to the ready callback
-        for ( i = 0; i < arguments.length; i++ ) {
-            if ( $.isFunction( arguments[ i ] ) ) {
-                this.success = arguments[ i ];
-                //only one callback per constructor
-                break;
-            }
-        }
-    }
-
-    if (this.success) {
-        this.addHandler( 'ready', function ( event ) {
-            _this.success( event );
-        } );
-    }
 
     /**
-     * Retrieve context2D of this tile source
-     * @memberOf OpenSeadragon.TileSource
-     * @function getContext2D
+     * The URL of the image to be loaded. Can be undefined if the configuration happened
+     * via plain object or class injection
+     * @member {String} url
+     * @memberof OpenSeadragon.TileSource#
      */
-
+    this.url = null;
     /**
      * Ratio of width to height
      * @member {Number} aspectRatio
@@ -178,13 +153,63 @@ $.TileSource = function( width, height, tileSize, tileOverlap, minLevel, maxLeve
      * @memberof OpenSeadragon.TileSource#
      */
 
-    // TODO potentially buggy behavior: what if .url is used by child class before it calls super constructor?
-    //  this can happen if old JS class definition is used
-    if( 'string' === $.type( arguments[ 0 ] ) ){
-        this.url = arguments[0];
+    this.addHandler('ready', e => {
+        const source = e.tileSource;
+        //explicit configuration via positional args in constructor
+        //or the more idiomatic 'options' object
+        this.ready       = true;
+        this.aspectRatio = (source.width && source.height) ?
+            (source.width / source.height) : 1;
+        this.dimensions  = new $.Point( source.width, source.height );
+
+        if ( source.tileSize ){
+            this._tileWidth = this._tileHeight = source.tileSize;
+            delete this.tileSize;
+        } else {
+            if( source.tileWidth ){
+                // We were passed tileWidth in options, but we want to rename it
+                // with a leading underscore to make clear that it is not safe to directly modify it
+                this._tileWidth = source.tileWidth;
+                delete this.tileWidth;
+            } else {
+                this._tileWidth = 0;
+            }
+
+            if( source.tileHeight ){
+                // See note above about renaming this.tileWidth
+                this._tileHeight = source.tileHeight;
+                delete this.tileHeight;
+            } else {
+                this._tileHeight = 0;
+            }
+        }
+
+        this.tileOverlap = source.tileOverlap ? source.tileOverlap : 0;
+        this.minLevel    = source.minLevel ? source.minLevel : 0;
+        this.maxLevel    = ( undefined !== source.maxLevel && null !== source.maxLevel ) ?
+            source.maxLevel : (
+                ( source.width && source.height ) ? Math.ceil(
+                    Math.log( Math.max( source.width, source.height ) ) /
+                    Math.log( 2 )
+                ) : 0
+            );
+        if( source.success && $.isFunction( source.success ) ){
+            source.success( this );
+        }
+    }, null, Infinity); // important! go first to finish initialization
+
+    if( 'string' === $.type( options ) ){
+        this.url = options;
+        options = undefined;
+    } else {
+        //we allow options to override anything we don't treat as
+        //required via idiomatic options or which is functionally
+        //set depending on the state of the readiness of this tile
+        //source
+        $.extend( true, this, options );
     }
 
-    if (this.url) {
+    if (this.url && !this.ready) {
         //in case the getImageInfo method is overridden and/or implies an
         //async mechanism set some safe defaults first
         this.aspectRatio = 1;
@@ -195,56 +220,20 @@ $.TileSource = function( width, height, tileSize, tileOverlap, minLevel, maxLeve
         this.minLevel    = 0;
         this.maxLevel    = 0;
         this.ready       = false;
+        this._uniqueIdentifier = this.url;
         //configuration via url implies the extending class
         //implements and 'configure'
-        this.getImageInfo( this.url );
-
+        setTimeout(() => this.getImageInfo(this.url)); //needs async in case someone exits immediately
     } else {
-
-        //explicit configuration via positional args in constructor
-        //or the more idiomatic 'options' object
-        this.ready       = true;
-        this.aspectRatio = (options.width && options.height) ?
-            (options.width / options.height) : 1;
-        this.dimensions  = new $.Point( options.width, options.height );
-
-        if ( this.tileSize ){
-            this._tileWidth = this._tileHeight = this.tileSize;
-            delete this.tileSize;
+        this._uniqueIdentifier = Math.floor(Math.random() * 1e10).toString(36);
+        // by default it used to fire immediately, so make the ready default
+        if (this.ready || this.ready === undefined) {
+            this.raiseEvent('ready', { tileSource: this });
         } else {
-            if( this.tileWidth ){
-                // We were passed tileWidth in options, but we want to rename it
-                // with a leading underscore to make clear that it is not safe to directly modify it
-                this._tileWidth = this.tileWidth;
-                delete this.tileWidth;
-            } else {
-                this._tileWidth = 0;
-            }
-
-            if( this.tileHeight ){
-                // See note above about renaming this.tileWidth
-                this._tileHeight = this.tileHeight;
-                delete this.tileHeight;
-            } else {
-                this._tileHeight = 0;
-            }
-        }
-
-        this.tileOverlap = options.tileOverlap ? options.tileOverlap : 0;
-        this.minLevel    = options.minLevel ? options.minLevel : 0;
-        this.maxLevel    = ( undefined !== options.maxLevel && null !== options.maxLevel ) ?
-            options.maxLevel : (
-                ( options.width && options.height ) ? Math.ceil(
-                    Math.log( Math.max( options.width, options.height ) ) /
-                    Math.log( 2 )
-                ) : 0
-            );
-        if( this.success && $.isFunction( this.success ) ){
-            this.success( this );
+            setTimeout(() => this.raiseEvent('ready', { tileSource: this }));
         }
     }
-
-
+    return this;
 };
 
 /** @lends OpenSeadragon.TileSource.prototype */
@@ -317,8 +306,8 @@ $.TileSource.prototype = {
         // see https://github.com/openseadragon/openseadragon/issues/22
         // we use the tilesources implementation of getLevelScale to generate
         // a memoized re-implementation
-        var levelScaleCache = {},
-            i;
+        const levelScaleCache = {};
+        let i;
         for( i = 0; i <= this.maxLevel; i++ ){
             levelScaleCache[ i ] = 1 / Math.pow(2, this.maxLevel - i);
         }
@@ -332,9 +321,9 @@ $.TileSource.prototype = {
      * @param {Number} level
      */
     getNumTiles: function( level ) {
-        var scale = this.getLevelScale( level ),
-            x = Math.ceil( scale * this.dimensions.x / this.getTileWidth(level) ),
-            y = Math.ceil( scale * this.dimensions.y / this.getTileHeight(level) );
+        const scale = this.getLevelScale( level );
+        const x = Math.ceil( scale * this.dimensions.x / this.getTileWidth(level) );
+        const y = Math.ceil( scale * this.dimensions.y / this.getTileHeight(level) );
 
         return new $.Point( x, y );
     },
@@ -344,9 +333,9 @@ $.TileSource.prototype = {
      * @param {Number} level
      */
     getPixelRatio: function( level ) {
-        var imageSizeScaled = this.dimensions.times( this.getLevelScale( level ) ),
-            rx = 1.0 / imageSizeScaled.x * $.pixelDensityRatio,
-            ry = 1.0 / imageSizeScaled.y * $.pixelDensityRatio;
+        const imageSizeScaled = this.dimensions.times( this.getLevelScale( level ) );
+        const rx = 1.0 / imageSizeScaled.x * $.pixelDensityRatio;
+        const ry = 1.0 / imageSizeScaled.y * $.pixelDensityRatio;
 
         return new $.Point(rx, ry);
     },
@@ -357,8 +346,8 @@ $.TileSource.prototype = {
      * @returns {Number} The highest level in this tile source that can be contained in a single tile.
      */
     getClosestLevel: function() {
-        var i,
-            tiles;
+        let i;
+        let tiles;
 
         for (i = this.minLevel + 1; i <= this.maxLevel; i++){
             tiles = this.getNumTiles(i);
@@ -376,24 +365,24 @@ $.TileSource.prototype = {
      * @param {OpenSeadragon.Point} point
      */
     getTileAtPoint: function(level, point) {
-        var validPoint = point.x >= 0 && point.x <= 1 &&
+        const validPoint = point.x >= 0 && point.x <= 1 &&
             point.y >= 0 && point.y <= 1 / this.aspectRatio;
         $.console.assert(validPoint, "[TileSource.getTileAtPoint] must be called with a valid point.");
 
 
-        var widthScaled = this.dimensions.x * this.getLevelScale(level);
-        var pixelX = point.x * widthScaled;
-        var pixelY = point.y * widthScaled;
+        const widthScaled = this.dimensions.x * this.getLevelScale(level);
+        const pixelX = point.x * widthScaled;
+        const pixelY = point.y * widthScaled;
 
-        var x = Math.floor(pixelX / this.getTileWidth(level));
-        var y = Math.floor(pixelY / this.getTileHeight(level));
+        let x = Math.floor(pixelX / this.getTileWidth(level));
+        let y = Math.floor(pixelY / this.getTileHeight(level));
 
         // When point.x == 1 or point.y == 1 / this.aspectRatio we want to
         // return the last tile of the row/column
         if (point.x >= 1) {
             x = this.getNumTiles(level).x - 1;
         }
-        var EPSILON = 1e-15;
+        const EPSILON = 1e-15;
         if (point.y >= 1 / this.aspectRatio - EPSILON) {
             y = this.getNumTiles(level).y - 1;
         }
@@ -412,14 +401,14 @@ $.TileSource.prototype = {
      * the isSource parameter.
      */
     getTileBounds: function( level, x, y, isSource ) {
-        var dimensionsScaled = this.dimensions.times( this.getLevelScale( level ) ),
-            tileWidth = this.getTileWidth(level),
-            tileHeight = this.getTileHeight(level),
-            px = ( x === 0 ) ? 0 : tileWidth * x - this.tileOverlap,
-            py = ( y === 0 ) ? 0 : tileHeight * y - this.tileOverlap,
-            sx = tileWidth + ( x === 0 ? 1 : 2 ) * this.tileOverlap,
-            sy = tileHeight + ( y === 0 ? 1 : 2 ) * this.tileOverlap,
-            scale = 1.0 / dimensionsScaled.x;
+        const dimensionsScaled = this.dimensions.times( this.getLevelScale( level ) );
+        const tileWidth = this.getTileWidth(level);
+        const tileHeight = this.getTileHeight(level);
+        const px = ( x === 0 ) ? 0 : tileWidth * x - this.tileOverlap;
+        const py = ( y === 0 ) ? 0 : tileHeight * y - this.tileOverlap;
+        let sx = tileWidth + ( x === 0 ? 1 : 2 ) * this.tileOverlap;
+        let sy = tileHeight + ( y === 0 ? 1 : 2 ) * this.tileOverlap;
+        const scale = 1.0 / dimensionsScaled.x;
 
         sx = Math.min( sx, dimensionsScaled.x - px );
         sy = Math.min( sy, dimensionsScaled.y - py );
@@ -438,6 +427,9 @@ $.TileSource.prototype = {
      * There are three scenarios of opening a tile source: providing a parseable string, plain object, or an URL.
      * This method is only called by OSD if the TileSource configuration is a non-parseable string (~url).
      *
+     * Note: you can access the properties sent to the TileSource constructor via the options object
+     * directly on 'this' reference.
+     *
      * The string can contain a hash `#` symbol, followed by
      * key=value arguments. If this is the case, this method sends this
      * data as a POST body.
@@ -447,14 +439,14 @@ $.TileSource.prototype = {
      * @throws {Error}
      */
     getImageInfo: function( url ) {
-        var _this = this,
-            callbackName,
-            callback,
-            readySource,
-            options,
-            urlParts,
-            filename,
-            lastDot;
+        const _this = this;
+        let callbackName;
+        let callback;
+        let readySource;
+        let options;
+        let urlParts;
+        let filename;
+        let lastDot;
 
 
         if( url ) {
@@ -466,9 +458,9 @@ $.TileSource.prototype = {
             }
         }
 
-        var postData = null;
+        let postData = null;
         if (this.splitHashDataForPost) {
-            var hashIdx = url.indexOf("#");
+            const hashIdx = url.indexOf("#");
             if (hashIdx !== -1) {
                 postData = url.substring(hashIdx + 1);
                 url = url.substr(0, hashIdx);
@@ -479,7 +471,7 @@ $.TileSource.prototype = {
             if( typeof (data) === "string" ) {
                 data = $.parseXml( data );
             }
-            var $TileSource = $.TileSource.determineType( _this, data, url );
+            const $TileSource = $.TileSource.determineType( _this, data, url );
             if ( !$TileSource ) {
                 /**
                  * Raised when an error occurs loading a TileSource.
@@ -501,6 +493,7 @@ $.TileSource.prototype = {
                 options.ajaxWithCredentials = _this.ajaxWithCredentials;
             }
 
+            options.ready = true;  // force synchronous finish
             readySource = new $TileSource( options );
             _this.ready = true;
             /**
@@ -535,11 +528,11 @@ $.TileSource.prototype = {
                 withCredentials: this.ajaxWithCredentials,
                 headers: this.ajaxHeaders,
                 success: function( xhr ) {
-                    var data = processResponse( xhr );
+                    const data = processResponse( xhr );
                     callback( data );
                 },
                 error: function ( xhr, exc ) {
-                    var msg;
+                    let msg;
 
                     /*
                         IE < 10 will block XHR requests to different origins. Any property access on the request
@@ -549,7 +542,7 @@ $.TileSource.prototype = {
                     try {
                         msg = "HTTP " + xhr.status + " attempting to load TileSource: " + url;
                     } catch ( e ) {
-                        var formattedExc;
+                        let formattedExc;
                         if ( typeof ( exc ) === "undefined" || !exc.toString ) {
                             formattedExc = "Unknown error";
                         } else {
@@ -611,7 +604,42 @@ $.TileSource.prototype = {
      * @returns {Boolean}
      */
     equals: function (otherSource) {
+        return this === otherSource;
+    },
+
+    /**
+     * Determines if this tile source data can be batched.
+     * @return {boolean}
+     */
+    batchEnabled() {
         return false;
+    },
+
+    /**
+     * Determines if a tile request from a source (even itself!) can be batched with this source.
+     * By default, returns false -> in this case, each tile falls to a single bucket alone.
+     * @param {OpenSeadragon.TileSource} otherSource
+     * @return {boolean}
+     */
+    batchCompatible(otherSource) {
+        return false;
+    },
+
+    /**
+     * Maximum batch size. Can, for example, be derived from (average) tile size of the source.
+     * @return {number} integer, number of max jobs per batch
+     */
+    batchMaxJobs() {
+        return -1;
+    },
+
+    /**
+     * How long to wait with a batch before processing. Big timeout means larger
+     * batches with fewer requests, at the cost of slower loading.
+     * @return {number} milliseconds to wait for tiles to be added to the batch before processing
+     */
+    batchTimeout() {
+        return 5;
     },
 
     /**
@@ -744,7 +772,7 @@ $.TileSource.prototype = {
         }
 
         if (typeof url !== "string") {
-            return withHeaders(level + "/" + x + "_" + y);
+            return withHeaders(this._uniqueIdentifier + ":" + level + "/" + x + "_" + y);
         }
         return withHeaders(url);
     },
@@ -756,13 +784,13 @@ $.TileSource.prototype = {
      * @param {Number} y
      */
     tileExists: function( level, x, y ) {
-        var numTiles = this.getNumTiles( level );
+        const numTiles = this.getNumTiles( level );
         return level >= this.minLevel &&
-               level <= this.maxLevel &&
-               x >= 0 &&
-               y >= 0 &&
-               x < numTiles.x &&
-               y < numTiles.y;
+            level <= this.maxLevel &&
+            x >= 0 &&
+            y >= 0 &&
+            x < numTiles.x &&
+            y < numTiles.y;
     },
 
     /**
@@ -779,66 +807,29 @@ $.TileSource.prototype = {
     },
 
     /**
-     * Download tile data.
+     * Download tile data. The context attribute is the reference to the job object itself, which is extended
+     * by ImageLoader.addJob(options) options object, so there are also properties like context.source (reference to self).
+     *
      * Note that if you override this function, you should override also downloadTileAbort().
-     * @param {ImageJob} context job context that you have to call finish(...) on.
-     * @param {String} [context.src] - URL of image to download.
-     * @param {String} [context.loadWithAjax] - Whether to load this image with AJAX.
-     * @param {String} [context.ajaxHeaders] - Headers to add to the image request if using AJAX.
-     * @param {Boolean} [context.ajaxWithCredentials] - Whether to set withCredentials on AJAX requests.
-     * @param {String} [context.crossOriginPolicy] - CORS policy to use for downloads
-     * @param {?String|?Object} [context.postData] - HTTP POST data (usually but not necessarily
-     *   in k=v&k2=v2... form, see TileSource::getTilePostData) or null
-     * @param {*} [context.userData] - Empty object to attach your own data and helper variables to.
-     * @param {Function} [context.finish] - Should be called unless abort() was executed upon successful
-     *   data retrieval.
-     *   Usage: context.finish(data, request, dataType=undefined). Pass the downloaded data object
-     *   add also reference to an ajax request if used. Optionally, specify what data type the data is.
-     * @param {Function} [context.fail] - Should be called unless abort() was executed upon unsuccessful request.
-     *   Usage: context.fail(errMessage, request). Provide error message in case of failure,
-     *   add also reference to an ajax request if used.
-     * @param {Function} [context.abort] - Called automatically when the job times out.
-     *   Usage: if you decide to abort the request (no fail/finish will be called), call context.abort().
-     * @param {Function} [context.callback] Private parameter. Called automatically once image has been downloaded
-     *   (triggered by finish).
-     * @param {Number} [context.timeout] Private parameter. The max number of milliseconds that
-     *   this image job may take to complete.
-     * @param {string} [context.errorMsg] Private parameter. The final error message, default null (set by finish).
+     * @param {OpenSeadragon.ImageJob} context job context that you have to call finish(...) on.
      */
     downloadTileStart: function (context) {
-        const dataStore = context.userData,
-            image = new Image();
-
-        dataStore.image = image;
-        dataStore.request = null;
-
-        const finalize = function(error) {
-            if (error || !image) {
-                context.fail(error || "[downloadTileStart] Image load failed: undefined Image instance.",
-                    dataStore.request);
-                return;
-            }
-            image.onload = image.onerror = image.onabort = null;
-            context.finish(image, dataStore.request, "image");
-        };
-        image.onload = function () {
-            finalize();
-        };
-        image.onabort = image.onerror = function() {
-            finalize("[downloadTileStart] Image load aborted.");
-        };
-
         // Load the tile with an AJAX request if the loadWithAjax option is
         // set. Otherwise load the image by setting the source property of the image object.
+
+        // TODO: the cors/creds is not optimal here:
+        //  - XMLHttpRequest can only setup credentials flag, so `ajaxWithCredentials` is a boolean
+        //  - <img> item can turn on/off cors, and include credentials if cors on, therefore `crossOriginPolicy` can have three values (one is null)
+        //  --> we should merge these flags to a single value to avoid confusion with usage, and use modern fetch that can setup also cors to have consistent behavior
         if (context.loadWithAjax) {
-            dataStore.request = $.makeAjaxRequest({
+            context.userData.request = $.makeAjaxRequest({
                 url: context.src,
                 withCredentials: context.ajaxWithCredentials,
                 headers: context.ajaxHeaders,
                 responseType: "arraybuffer",
                 postData: context.postData,
                 success: function(request) {
-                    var blb;
+                    let blb;
                     // Make the raw data into a blob.
                     // BlobBuilder fallback adapted from
                     // http://stackoverflow.com/questions/15293694/blob-constructor-browser-compatibility
@@ -859,19 +850,32 @@ $.TileSource.prototype = {
                     }
                     // If the blob is empty for some reason consider the image load a failure.
                     if (blb.size === 0) {
-                        finalize("[downloadTileStart] Empty image response.");
+                        context.fail("[downloadTileStart] Empty image response.", request);
                     } else {
-                        // Create a URL for the blob data and make it the source of the image object.
-                        // This will still trigger Image.onload to indicate a successful tile load.
-                        image.src = (window.URL || window.webkitURL).createObjectURL(blb);
+                        context.finish(blb, request, "rasterBlob");
                     }
                 },
                 error: function(request) {
-                    finalize("[downloadTileStart] Image load aborted - XHR error");
+                    context.fail("[downloadTileStart] Image load aborted - XHR error", request);
                 }
             });
         } else {
-            if (context.crossOriginPolicy !== false) {
+            // While we could just do this one-liner, we found out that downloading the data _before_ a cache is initialized
+            // works better in general cases. Network access is the most error-prone part, and this scenario better supports
+            // all default use-cases, including the fact that retry logic works only at this stage, not on the cache level.
+            //  context.finish(context.src, null, "__private__imageUrl");
+
+            const image = new Image();
+            context.userData.imageRequest = image;
+            image.onload = function () {
+                image.onload = image.onerror = image.onabort = null;
+                context.finish(image, null, "image");
+            };
+            image.onabort = image.onerror = function() {
+                image.onload = image.onerror = image.onabort = null;
+                context.fail("[downloadTileStart] Image load aborted or errored out.", null);
+            };
+            if (typeof context.crossOriginPolicy === "string") {
                 image.crossOrigin = context.crossOriginPolicy;
             }
             image.src = context.src;
@@ -883,16 +887,45 @@ $.TileSource.prototype = {
      * Note that if you override this function, you should override also downloadTileStart().
      * Note that calling job.abort() would create an infinite loop!
      *
-     * @param {ImageJob} context job, the same object as with downloadTileStart(..)
+     * @param {OpenSeadragon.ImageJob} context job, the same object as with downloadTileStart(..)
      * @param {*} [context.userData] - Empty object to attach (and mainly read) your own data.
      */
     downloadTileAbort: function (context) {
         if (context.userData.request) {
             context.userData.request.abort();
         }
-        var image = context.userData.image;
-        if (context.userData.image) {
+        if (context.userData.imageRequest) {
+            const image = context.userData.imageRequest;
             image.onload = image.onerror = image.onabort = null;
+            image.src = "";
+        }
+    },
+
+    /**
+     * Handles the fetching of multiple tiles in a single operation.
+     * The TileSource is responsible for calling finish/fail on each of the individual job items
+     * carried by batchJob.jobs. Avoid calling finish/fail on `batchJob` itself.
+     *
+     * Note that failed batch jobs are retried in non-batched mode. You should therefore
+     * have a valid downloadTileStart implementation in any case.
+     *
+     * @param {OpenSeadragon.BatchImageJob} batchJob - The batch job containing .jobs array
+     */
+    downloadTileBatchStart(batchJob) {
+        // Fallback default implementation: process individually.
+        // Real implementations (e.g. for sprite sheets) should override this and use true batched approach.
+        for (let i = 0; i < batchJob.jobs.length; i++) {
+            this.downloadTileStart(batchJob.jobs[i]);
+        }
+    },
+
+    /**
+     * Handles abortion of the fetching of multiple tiles.
+     * @param {OpenSeadragon.BatchImageJob} batchJob
+     */
+    downloadTileBatchAbort(batchJob) {
+        for (let i = 0; i < batchJob.jobs.length; i++) {
+            this.downloadTileAbort(batchJob.jobs[i]);
         }
     },
 
@@ -984,10 +1017,10 @@ $.extend( true, $.TileSource.prototype, $.EventSource.prototype );
  * @param {XMLHttpRequest} xhr - the completed network request
  */
 function processResponse( xhr ){
-    var responseText = xhr.responseText,
-        status       = xhr.status,
-        statusText,
-        data;
+    const responseText = xhr.responseText;
+    let status       = xhr.status;
+    let statusText;
+    let data;
 
     if ( !xhr ) {
         throw new Error( $.getString( "Errors.Security" ) );
@@ -1001,17 +1034,17 @@ function processResponse( xhr ){
 
     if( responseText.match(/^\s*<.*/) ){
         try{
-        data = ( xhr.responseXML && xhr.responseXML.documentElement ) ?
-            xhr.responseXML :
-            $.parseXml( responseText );
+            data = ( xhr.responseXML && xhr.responseXML.documentElement ) ?
+                xhr.responseXML :
+                $.parseXml( responseText );
         } catch (e){
             data = xhr.responseText;
         }
     }else if( responseText.match(/\s*[{[].*/) ){
         try{
-          data = $.parseJSON(responseText);
+            data = $.parseJSON(responseText);
         } catch(e){
-          data =  responseText;
+            data =  responseText;
         }
     }else{
         data = responseText;
@@ -1031,8 +1064,7 @@ function processResponse( xhr ){
  *      loaded from, if any.
  */
 $.TileSource.determineType = function( tileSource, data, url ){
-    var property;
-    for( property in OpenSeadragon ){
+    for( const property in OpenSeadragon ){
         if( property.match(/.+TileSource$/) &&
             $.isFunction( OpenSeadragon[ property ] ) &&
             $.isFunction( OpenSeadragon[ property ].prototype.supports ) &&

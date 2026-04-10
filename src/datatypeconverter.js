@@ -1,8 +1,8 @@
 /*
- * OpenSeadragon.convertor (static property)
+ * OpenSeadragon.converter (static property)
  *
  * Copyright (C) 2009 CodePlex Foundation
- * Copyright (C) 2010-2024 OpenSeadragon contributors
+ * Copyright (C) 2010-2025 OpenSeadragon contributors
 
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are
@@ -33,6 +33,8 @@
  */
 
 (function($){
+
+const OpenSeadragon = $; // alias for JSDoc
 
 /**
  * modified from https://gist.github.com/Prottoy2938/66849e04b0bac459606059f5f9f3aa1a
@@ -85,9 +87,9 @@ class WeightedGraph {
      * @return {{path: ConversionStep[], cost: number}|undefined} cheapest path from start to finish
      */
     dijkstra(start, finish) {
-        let path = []; //to return at end
+        const path = []; //to return at end
         if (start === finish) {
-            return {path: path, cost: 0};
+            return { path: path, cost: 0 };
         }
         const nodes = new OpenSeadragon.PriorityQueue();
         let smallestNode;
@@ -110,11 +112,11 @@ class WeightedGraph {
                 break;
             }
             const neighbors = this.adjacencyList[smallestNode.value];
-            for (let neighborKey in neighbors) {
-                let edge = neighbors[neighborKey];
+            for (const neighborKey in neighbors) {
+                const edge = neighbors[neighborKey];
                 //relax node
-                let newCost = smallestNode.key + edge.weight;
-                let nextNeighbor = edge.target;
+                const newCost = smallestNode.key + edge.weight;
+                const nextNeighbor = edge.target;
                 if (newCost < nextNeighbor.key) {
                     nextNeighbor._previous = smallestNode;
                     //key change
@@ -127,7 +129,7 @@ class WeightedGraph {
             return undefined; //no path
         }
 
-        let finalCost = smallestNode.key; //final weight last node
+        const finalCost = smallestNode.key; //final weight last node
 
         // done, build the shortest path
         while (smallestNode._previous) {
@@ -147,11 +149,132 @@ class WeightedGraph {
     }
 }
 
+let _imageConversionWorker;
+let _conversionId = 0;
+// id -> { resolve, reject, timer? }
+const _pendingConversions = new Map();
+let __warnedNoSAB = false;
+const __hasSAB = typeof SharedArrayBuffer !== 'undefined' && self.crossOriginIsolated === true;
+
+function getIBWorker() {
+    if (_imageConversionWorker) {
+        return _imageConversionWorker;
+    }
+
+    const code = `
+self.onmessage = async (e) => {
+  const { id, op, } = e.data;
+  let error;
+  try {
+    if (op === 'decodeFromBlob') {
+      const bmp = await createImageBitmap(e.data.blob, { colorSpaceConversion: 'none' });
+      postMessage({ id, ok: true, bmp }, [bmp]);
+      return;
+    }
+    if (op === 'decodeFromBytes') {
+      const u8 = new Uint8Array(e.data.bytes);
+      const b  = new Blob([u8], { type: e.data.mime || '' });
+      const bmp = await createImageBitmap(b, { colorSpaceConversion: 'none' });
+      postMessage({ id, ok: true, bmp }, [bmp]);
+      return;
+    }
+    if (op === 'fetchDecode') {
+      const res = await fetch(e.data.url, e.data.setup);
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      const b = await res.blob();
+      const bmp = await createImageBitmap(b, { colorSpaceConversion: 'none' });
+      postMessage({ id, ok: true, bmp }, [bmp]);
+      return;
+    }
+    error = 'Unknown op: ' + op;
+  } catch (err) {
+    error = String(err && err.message || err);
+  }
+  postMessage({ id, ok: false, err: error });
+};
+`;
+    // eslint-disable-next-line compat/compat
+    const url = URL.createObjectURL(new Blob([code], { type: 'text/javascript' }));
+    _imageConversionWorker = new Worker(url);
+
+    _imageConversionWorker.onmessage = (e) => {
+        const { id, ok, bmp, err } = e.data || {};
+        const entry = _pendingConversions.get(id);
+        if (!entry) {
+            return;
+        }
+        _pendingConversions.delete(id);
+        if (entry.timer) {
+            clearTimeout(entry.timer);
+            entry.timer = null;
+        }
+        if (ok) {
+            entry.resolve(bmp);
+        } else {
+            entry.reject(new Error(err));
+        }
+    };
+
+    _imageConversionWorker.onerror = (e) => {
+        for (const [, entry] of _pendingConversions) {
+            if (entry.timer) {
+                clearTimeout(entry.timer);
+                entry.timer = null;
+            }
+            entry.reject(new Error('Worker error'));
+        }
+        _pendingConversions.clear();
+    };
+    return _imageConversionWorker;
+}
+
+function postWorker(op, payload, { timeoutMs = 15000 } = {}) {
+    const worker = getIBWorker();
+    const id = ++_conversionId;
+
+    return new $.Promise((resolve, reject) => {
+        // possibly test $.supportsPromise here as well...
+        payload.id = id;
+        payload.op = op;
+
+        const entry = { resolve, reject, timer: null };
+        if (timeoutMs > 0) {
+            entry.timer = setTimeout(() => {
+                entry.timer = null;
+                _pendingConversions.delete(id);
+                reject(new Error(`Worker timeout (${op})`));
+            }, timeoutMs);
+        }
+        _pendingConversions.set(id, entry);
+
+        if (op === 'decodeFromBytes') {
+            if (__hasSAB) {
+                const u8 = payload.u8;
+                // eslint-disable-next-line no-undef
+                const sab = new SharedArrayBuffer(u8.byteLength);
+                new Uint8Array(sab).set(u8);
+                worker.postMessage({ id, op, bytes: sab, mime: payload.mime });
+            } else {
+                if (!__warnedNoSAB) {
+                    __warnedNoSAB = true;
+                    console.warn('[Converter] SharedArrayBuffer unavailable; falling back to ArrayBuffer.');
+                }
+                const u8 = payload.u8;
+                const tight = (u8.byteOffset === 0 && u8.byteLength === u8.buffer.byteLength) ? u8 : u8.slice();
+                worker.postMessage({ id, op, bytes: tight.buffer, mime: payload.mime }, [tight.buffer]);
+            }
+            return;
+        }
+
+        worker.postMessage(payload);
+    });
+}
+
 /**
  * Edge.transform function on the conversion path in OpenSeadragon.converter.getConversionPath().
  *  It can be also conversion to undefined if used as destructor implementation.
  *
- * @callback TypeConvertor
+ * @callback TypeConverter
  * @memberof OpenSeadragon
  * @param {OpenSeadragon.Tile} tile reference tile that owns the data
  * @param {any} data data in the input format
@@ -178,16 +301,38 @@ class WeightedGraph {
  * @param {OpenSeadragon.PriorityQueue.Node} origin - Origin node of the conversion step.
  *  Its value is the origin format.
  * @param {number} weight cost of the conversion
- * @param {TypeConvertor} transform the conversion itself
+ * @param {TypeConverter} transform the conversion itself
  */
 
 /**
  * Class that orchestrates automated data types conversion. Do not instantiate
- * this class, use OpenSeadragon.convertor - a global instance, instead.
- * @class DataTypeConvertor
+ * this class, use OpenSeadragon.converter - a global instance, instead.
+ *
+ * Types are defined to closely describe the data type, e.g. "url" is insufficient,
+ * because url can point to many different data types. Another bad example is 'canvas'
+ * as canvas can have different underlying rendering implementations and thus differ
+ * in behavior. The following data types supported by
+ * OpenSeadragon core are:
+ * - "image" - HTMLImageElement, an <image> object
+ * - "context2d" - HtmlRenderingContext2D, a 2D canvas context
+ * - "rasterBlob" - Blob, a binary file-like object carrying image data
+ * - "imageBitmap" - an ImageBitmap object
+ *
+ * The system uses these to deliver desired data from TileSource (which implements fetching logics)
+ * through plugins to the renderer with preserving data type compatibility. Typical example is:
+ *  TiledImage downloads and creates Image object with type 'image'. It submits
+ *  to the system object of data type 'image'. The system runs this object through
+ *  possible plugins integrated into the invalidation routine (by default none),
+ *  and finishes by conversion for the WebGL renderer, which would most likely be "image"
+ *  object, because the conversion in this case is not even necessary, as the drawer publishes
+ *  the image type as one of its supported ones.
+ *  If some plugin required context2d type, the pipeline would deliver this type and used
+ *  it also for WebGL, as texture loading function accepts canvas object as well as image.
+ *
+ * @class OpenSeadragon.DataTypeConverter
  * @memberOf OpenSeadragon
  */
-$.DataTypeConvertor = class {
+OpenSeadragon.DataTypeConverter = class DataTypeConverter {
 
     constructor() {
         this.graph = new WeightedGraph();
@@ -197,32 +342,114 @@ $.DataTypeConvertor = class {
         // Teaching OpenSeadragon built-in conversions:
         const imageCreator = (tile, url) => new $.Promise((resolve, reject) => {
             if (!$.supportsAsync) {
-                throw "Not supported in sync mode!";
+                return reject("Not supported in sync mode!");
             }
             const img = new Image();
-            img.onerror = img.onabort = reject;
+            img.onerror = img.onabort = e => reject(`Failed to load image: ${url}`);
             img.onload = () => resolve(img);
+            if (tile.tiledImage && tile.tiledImage.crossOriginPolicy) {
+                img.crossOrigin = tile.tiledImage.crossOriginPolicy;
+            }
             img.src = url;
+            return undefined;
         });
         const canvasContextCreator = (tile, imageData) => {
-            const canvas = document.createElement( 'canvas' );
+            const canvas = document.createElement('canvas');
             canvas.width = imageData.width;
             canvas.height = imageData.height;
             const context = canvas.getContext('2d', { willReadFrequently: true });
-            context.drawImage( imageData, 0, 0 );
+            context.drawImage(imageData, 0, 0);
             return context;
         };
 
-        this.learn("context2d", "webImageUrl", (tile, ctx) => ctx.canvas.toDataURL(), 1, 2);
-        this.learn("image", "webImageUrl", (tile, image) => image.url);
-        this.learn("image", "context2d", canvasContextCreator, 1, 1);
-        this.learn("url", "image", imageCreator, 1, 1);
+        this.learn("rasterBlob", "image", (tile, blob) => new $.Promise((resolve, reject) => {
+            // eslint-disable-next-line compat/compat
+            const url = (window.URL || window.webkitURL).createObjectURL(blob);
+            if (!$.supportsAsync) {
+                return reject("Not supported in sync mode!");
+            }
+            const img = new Image();
+            img.onerror = img.onabort = e => {
+                // eslint-disable-next-line compat/compat
+                (window.URL || window.webkitURL).revokeObjectURL(blob);
+                reject(e);
+            };
+            img.onload = () => {
+                // eslint-disable-next-line compat/compat
+                (window.URL || window.webkitURL).revokeObjectURL(blob);
+                resolve(img);
+            };
+            img.decoding = 'async';
+            img.src = url;
+            return undefined;
+        }), 1, 2);
+
+        this.learn("context2d", "rasterBlob", (tile, ctx) => new $.Promise((resolve, reject) => {
+            if (!$.supportsAsync) {
+                return reject("Not supported in sync mode!");
+            }
+            ctx.canvas.toBlob(resolve);
+            return undefined;
+        }), 1, 2);
+
+        // rasterBlob -> imageBitmap (preferred fast path)
+        this.learn("rasterBlob", "imageBitmap", (tile, blob) => new $.Promise((resolve, reject) => {
+            if (!$.supportsAsync) {
+                return reject("Not supported in sync mode!");
+            }
+            if (_imageConversionWorker) {
+                postWorker('decodeFromBlob', { blob }).then(resolve).catch(reject);
+            } else {
+                // Fallback main thread
+                createImageBitmap(blob, { colorSpaceConversion: 'none' }).then(resolve).catch(reject);
+            }
+            return undefined;
+        }), 1, 1);
+
+        this.learn("imageBitmap", "context2d", (tile, bmp) => {
+            const canvas = document.createElement('canvas');
+            canvas.width = bmp.width;
+            canvas.height = bmp.height;
+            const ctx = canvas.getContext('2d', { willReadFrequently: true });
+            ctx.drawImage(bmp, 0, 0);
+            return ctx;
+        }, 1, 2);
+
+        this.learn("image", "imageBitmap", (tile, img) => {
+            return createImageBitmap(img, { colorSpaceConversion: 'none' });
+        }, 1, 2);
+        this.learn("image", "context2d", canvasContextCreator, 1, 2);
 
         //Copies
         this.learn("image", "image", (tile, image) => imageCreator(tile, image.src), 1, 1);
-        this.learn("url", "url", (tile, url) => url, 0, 1); //strings are immutable, no need to copy
         this.learn("context2d", "context2d", (tile, ctx) => canvasContextCreator(tile, ctx.canvas));
+        this.learn("rasterBlob", "rasterBlob", (tile, blob) => blob, 0, 1); //blobs are immutable, no need to copy
+        this.learn("imageBitmap", "imageBitmap", (tile, bmp) => new $.Promise((resolve, reject) => {
+            try {
+                if (!$.supportsAsync) {
+                    return reject("Not supported in sync mode!");
+                }
+                if (!bmp) {
+                    return reject(new Error("No ImageBitmap to copy"));
+                }
 
+                if (typeof OffscreenCanvas !== 'undefined' && bmp.width && bmp.height) {
+                    const oc = new OffscreenCanvas(bmp.width, bmp.height);
+                    const ctx = oc.getContext('2d', { willReadFrequently: false });
+                    ctx.drawImage(bmp, 0, 0);
+
+                    if (typeof oc.transferToImageBitmap === 'function') {
+                        const copy = oc.transferToImageBitmap();
+                        return resolve(copy);
+                    }
+                    return createImageBitmap(oc, { colorSpaceConversion: 'none' }).then(resolve);
+                }
+                // Fallback
+                return createImageBitmap(bmp, { colorSpaceConversion: 'none' }).then(resolve);
+            } catch (e) {
+                return reject(e);
+            }
+        }), 1, 1);
         /**
          * Free up canvas memory
          * (iOS 12 or higher on 2GB RAM device has only 224MB canvas memory,
@@ -252,10 +479,10 @@ $.DataTypeConvertor = class {
      *  - otherwise, toString.call(x) is applied to get the parameter description
      * @return {string} unique variable descriptor
      */
-    guessType( x ) {
+    guessType(x) {
         if (Array.isArray(x)) {
             const types = [];
-            for (let item of x) {
+            for (const item of x) {
                 if (item === undefined || item === null) {
                     continue;
                 }
@@ -287,7 +514,7 @@ $.DataTypeConvertor = class {
      * Teach the system to convert data type 'from' -> 'to'
      * @param {string} from unique ID of the data item 'from'
      * @param {string} to unique ID of the data item 'to'
-     * @param {OpenSeadragon.TypeConvertor} callback convertor that takes two arguments: a tile reference, and
+     * @param {OpenSeadragon.TypeConverter} callback converter that takes two arguments: a tile reference, and
      *  a data object of a type 'from'; and converts this data object to type 'to'. It can return also the value
      *  wrapped in a Promise (returned in resolve) or it can be async function.
      * @param {Number} [costPower=0] positive cost class of the conversion, smaller or equal than 7.
@@ -301,8 +528,8 @@ $.DataTypeConvertor = class {
      *   use costPower=2, costMultiplier=3; can be between 1 and 10^5
      */
     learn(from, to, callback, costPower = 0, costMultiplier = 1) {
-        $.console.assert(costPower >= 0 && costPower <= 7, "[DataTypeConvertor] Conversion costPower must be between <0, 7>.");
-        $.console.assert($.isFunction(callback), "[DataTypeConvertor:learn] Callback must be a valid function!");
+        $.console.assert(costPower >= 0 && costPower <= 7, "[DataTypeConverter] Conversion costPower must be between <0, 7>.");
+        $.console.assert($.isFunction(callback), "[DataTypeConverter:learn] Callback must be a valid function!");
 
         if (from === to) {
             this.copyings[to] = callback;
@@ -340,26 +567,36 @@ $.DataTypeConvertor = class {
      * @param {any} data data item to convert
      * @param {string} from data item type
      * @param {string} to desired type(s)
-     * @return {OpenSeadragon.Promise<?>} promise resolution with type 'to' or undefined if the conversion failed
+     * @return {OpenSeadragon.Promise<?>} promise resolution with type 'to', or rejection if conversion failed.
      */
     convert(tile, data, from, ...to) {
         const conversionPath = this.getConversionPath(from, to);
         if (!conversionPath) {
-            $.console.error(`[OpenSeadragon.convertor.convert] Conversion ${from} ---> ${to} cannot be done!`);
+            $.console.error(`[OpenSeadragon.converter.convert] Conversion ${from} ---> ${to} cannot be done!`);
             return $.Promise.resolve();
         }
 
-        const stepCount = conversionPath.length,
-            _this = this;
+        const stepCount = conversionPath.length;
+        const _this = this;
         const step = (x, i, destroy = true) => {
             if (i >= stepCount) {
                 return $.Promise.resolve(x);
             }
-            let edge = conversionPath[i];
-            let y = edge.transform(tile, x);
+            const edge = conversionPath[i];
+            let y;
+            try {
+                y = edge.transform(tile, x);
+            } catch (err) {
+                if (destroy) {
+                    _this.destroy(x, edge.origin.value);
+                }
+                return $.Promise.reject(`[OpenSeadragon.converter.convert] sync failure (while converting using ${edge.origin.value} -> ${edge.target.value})`);
+            }
             if (y === undefined) {
-                $.console.error(`[OpenSeadragon.convertor.convert] data mid result undefined value (while converting using %s)`, edge);
-                return $.Promise.resolve();
+                if (destroy) {
+                    _this.destroy(x, edge.origin.value);
+                }
+                return $.Promise.reject(`[OpenSeadragon.converter.convert] data mid result undefined value (while converting using ${edge.origin.value} -> ${edge.target.value})`);
             }
             //node.value holds the type string
             if (destroy) {
@@ -385,7 +622,7 @@ $.DataTypeConvertor = class {
             const y = copyTransform(tile, data);
             return $.type(y) === "promise" ? y : $.Promise.resolve(y);
         }
-        $.console.warn(`[OpenSeadragon.convertor.copy] is not supported with type %s`, type);
+        $.console.warn(`[OpenSeadragon.converter.copy] is not supported with type %s`, type);
         return $.Promise.resolve(undefined);
     }
 
@@ -412,13 +649,13 @@ $.DataTypeConvertor = class {
      * @return {ConversionStep[]|undefined} array of required conversions (returns empty array
      *  for from===to), or undefined if the system cannot convert between given types.
      *  Each object has 'transform' function that converts between neighbouring types, such
-     *  that x = arr[i].transform(x) is valid input for convertor arr[i+1].transform(), e.g.
+     *  that x = arr[i].transform(x) is valid input for converter arr[i+1].transform(), e.g.
      *  arr[i+1].transform(arr[i].transform( ... )) is a valid conversion procedure.
      *
      *  Note: if a function is returned, it is a callback called once the data is ready.
      */
     getConversionPath(from, to) {
-        let bestConvertorPath, selectedType;
+        let bestConverterPath;
         let knownFrom = this._known[from];
         if (!knownFrom) {
             this._known[from] = knownFrom = {};
@@ -428,29 +665,38 @@ $.DataTypeConvertor = class {
             $.console.assert(to.length > 0, "[getConversionPath] conversion 'to' type must be defined.");
             let bestCost = Infinity;
 
-            //FIXME: pre-compute all paths in 'to' array? could be efficient for multiple
-            // type system, but overhead for simple use cases... now we just use the first type if costs unknown
-            selectedType = to[0];
-
             for (const outType of to) {
-                const conversion = knownFrom[outType];
+                let conversion = knownFrom[outType];
+                if (conversion === undefined) {
+                    knownFrom[outType] = conversion = this.graph.dijkstra(from, outType);
+                }
                 if (conversion && bestCost > conversion.cost) {
-                    bestConvertorPath = conversion;
+                    bestConverterPath = conversion;
                     bestCost = conversion.cost;
-                    selectedType = outType;
                 }
             }
         } else {
             $.console.assert(typeof to === "string", "[getConversionPath] conversion 'to' type must be defined.");
-            bestConvertorPath = knownFrom[to];
-            selectedType = to;
+            bestConverterPath = knownFrom[to];
+            if (bestConverterPath === undefined) {
+                bestConverterPath = this.graph.dijkstra(from, to);
+                this._known[from][to] = bestConverterPath;
+            }
         }
 
-        if (!bestConvertorPath) {
-            bestConvertorPath = this.graph.dijkstra(from, selectedType);
-            this._known[from][selectedType] = bestConvertorPath;
+        return bestConverterPath ? bestConverterPath.path : undefined;
+    }
+
+    /**
+     * Get the final type of the conversion path.
+     * @param {ConversionStep[]} path
+     * @return {undefined|string}  undefined if invalid path
+     */
+    getConversionPathFinalType(path) {
+        if (!path || !path.length) {
+            return undefined;
         }
-        return bestConvertorPath ? bestConvertorPath.path : undefined;
+        return path[path.length - 1].target.value;
     }
 
     /**
@@ -462,7 +708,7 @@ $.DataTypeConvertor = class {
     }
 
     /**
-     * Check whether given type is known to the convertor
+     * Check whether given type is known to the converter
      * @param {string} type type to test
      * @return {boolean}
      */
@@ -472,7 +718,7 @@ $.DataTypeConvertor = class {
 };
 
 /**
- * Static convertor available throughout OpenSeadragon.
+ * Static converter available throughout OpenSeadragon.
  *
  * Built-in conversions include types:
  *  - context2d    canvas 2d context
@@ -480,9 +726,46 @@ $.DataTypeConvertor = class {
  *  - url    url string carrying or pointing to 2D raster data
  *  - canvas       HTMLCanvas element
  *
- * @type OpenSeadragon.DataTypeConvertor
+ * @type OpenSeadragon.DataTypeConverter
  * @memberOf OpenSeadragon
  */
-$.convertor = new $.DataTypeConvertor();
+$.converter = new $.DataTypeConverter();
 
+// Image URL -> image private conversion, used in tests (was public originally, but made private to
+// discourage bad practices by forcing conversion API to deal with URLs that download data
+$.converter.learn("__private__imageUrl", "imageBitmap", (tile, url) => new $.Promise((resolve, reject) => {
+    if (!$.supportsAsync) {
+        return reject("Not supported in sync mode!");
+    }
+    let setup;
+    if (tile.tiledImage && tile.tiledImage.crossOriginPolicy) {
+        const policy = tile.tiledImage.crossOriginPolicy;
+        if (policy === 'anonymous') {
+            setup = {
+                mode: 'cors',
+                credentials: 'omit',
+            };
+        } else if (policy === 'use-credentials') {
+            setup = {
+                mode: 'cors',
+                credentials: 'include',
+            };
+        } else if (policy) {
+            $.console.error(`Unsupported crossOriginPolicy ${policy}. Ignoring the property.`);
+        }
+    }
+    if (_imageConversionWorker) {
+        return postWorker('fetchDecode', { url, setup }).then(resolve).catch(reject);
+    }
+    // Fallback to the main thread
+    // eslint-disable-next-line compat/compat
+    return fetch(url, setup).then(res => {
+        if (!res.ok) {
+            throw new Error(`HTTP ${res.status} loading ${url}`);
+        }
+        return res.blob();
+    }).then(blob => createImageBitmap(blob, { colorSpaceConversion: 'none' })
+    ).then(resolve).catch(reject);
+}), 1, 1);
+$.converter.learn("__private__imageUrl", "__private__imageUrl", (tile, url) => url, 0, 1); //strings are immutable, no need to copy
 }(OpenSeadragon));

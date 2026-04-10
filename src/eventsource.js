@@ -2,7 +2,7 @@
  * OpenSeadragon - EventSource
  *
  * Copyright (C) 2009 CodePlex Foundation
- * Copyright (C) 2010-2024 OpenSeadragon contributors
+ * Copyright (C) 2010-2025 OpenSeadragon contributors
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are
@@ -33,6 +33,13 @@
  */
 
 (function($){
+
+/**
+ * @typedef {Object} OpenSeadragon.Event
+ * @memberof OpenSeadragon
+ * @property {boolean|function} [stopPropagation=undefined] - If set to true or the functional predicate returns true,
+ *   the event exits after handling the current call.
+ */
 
 /**
  * Event handler method signature used by all OpenSeadragon events.
@@ -135,8 +142,8 @@ $.EventSource.prototype = {
      * @param {OpenSeadragon.EventHandler|OpenSeadragon.AsyncEventHandler} handler - Function to be removed.
      */
     removeHandler: function ( eventName, handler ) {
-        const events = this.events[ eventName ],
-            handlers = [];
+        const events = this.events[ eventName ];
+        const handlers = [];
         if ( !events ) {
             return;
         }
@@ -167,7 +174,7 @@ $.EventSource.prototype = {
      * Remove all event handlers for a given event type. If no type is given all
      * event handlers for every event type are removed.
      * @function
-     * @param {String} eventName - Name of event for which all handlers are to be removed.
+     * @param {String} [eventName] - Name of event for which all handlers are to be removed.
      */
     removeAllHandlers: function( eventName ) {
         if ( eventName ){
@@ -199,6 +206,10 @@ $.EventSource.prototype = {
                     args.eventSource = source;
                     args.userData = events[ i ].userData;
                     events[ i ].handler( args );
+
+                    if (args.stopPropagation && (typeof args.stopPropagation !== "function" || args.stopPropagation() === true)) {
+                        break;
+                    }
                 }
             }
         };
@@ -224,7 +235,7 @@ $.EventSource.prototype = {
             // We return a promise that gets resolved after all the events finish.
             // Returning loop result is not correct, loop promises chain dynamically
             // and outer code could process finishing logics in the middle of event loop.
-            return new $.Promise(resolve => {
+            return new $.Promise((resolve, reject) => {
                 const length = events.length;
                 function loop(index) {
                     if ( index >= length || !events[ index ] ) {
@@ -233,11 +244,21 @@ $.EventSource.prototype = {
                     }
                     args.eventSource = source;
                     args.userData = events[ index ].userData;
-                    let result = events[ index ].handler( args );
+                    let result;
+                    try {
+                        result = events[ index ].handler( args );
+                    } catch (e) {
+                        return reject(e);
+                    }
                     result = (!result || $.type(result) !== "promise") ? $.Promise.resolve() : result;
-                    return result.then(() => loop(index + 1));
+                    return result.then(() => {
+                        if (!args.stopPropagation || (typeof args.stopPropagation === "function" && args.stopPropagation() === false)) {
+                            return loop(index + 1);
+                        }
+                        return loop(length);
+                    });
                 }
-                loop(0);
+                loop(0).catch(reject);
             });
         };
     },
@@ -247,7 +268,7 @@ $.EventSource.prototype = {
      * OpenSeadragon.AsyncEventHandler.
      * @function
      * @param {String} eventName - Name of event to register.
-     * @param {Object} eventArgs - Event-specific data.
+     * @param {Object|undefined} eventArgs - Event-specific data.
      * @returns {Boolean} True if the event was fired, false if it was rejected because of rejectEventHandler(eventName)
      */
     raiseEvent: function( eventName, eventArgs ) {
@@ -271,7 +292,7 @@ $.EventSource.prototype = {
      * This events awaits every asynchronous or promise-returning function, i.e.
      * OpenSeadragon.AsyncEventHandler.
      * @param {String} eventName - Name of event to register.
-     * @param {Object} eventArgs - Event-specific data.
+     * @param {Object|undefined} eventArgs - Event-specific data.
      * @param {?} [bindTarget = null] - Promise-resolved value on the event finish
      * @return {OpenSeadragon.Promise|undefined} - Promise resolved upon the event completion.
      */

@@ -1,6 +1,6 @@
 {
     "name": "openseadragon",
-    "version": "5.0.1",
+    "version": "6.0.2",
     "description": "Provides a smooth, zoomable user interface for HTML/Javascript.",
     "keywords": [
         "image",
@@ -12,6 +12,7 @@
         "dzi",
         "iiif",
         "osm",
+        "osd",
         "tms"
     ],
     "homepage": "https://openseadragon.github.io/",
@@ -21,6 +22,7 @@
     },
     "license": "BSD-3-Clause",
     "files": [
+        "types/",
         "build/openseadragon/"
     ],
     "main": "build/openseadragon/openseadragon.js",
@@ -29,25 +31,32 @@
         "url": "https://github.com/openseadragon/openseadragon.git"
     },
     "devDependencies": {
-        "eslint-plugin-compat": "^4.1.2",
+        "eslint-plugin-compat": "^6.0.2",
         "grunt": "^1.6.1",
         "grunt-contrib-clean": "^2.0.1",
         "grunt-contrib-compress": "^2.0.0",
         "grunt-contrib-concat": "^2.1.0",
-        "grunt-contrib-connect": "^3.0.0",
-        "grunt-contrib-qunit": "^7.0.1",
+        "grunt-contrib-connect": "^5.0.1",
+        "grunt-contrib-qunit": "^10.1.1",
         "grunt-contrib-uglify": "^5.0.1",
         "grunt-contrib-watch": "^1.1.0",
-        "grunt-eslint": "^24.0.1",
+        "grunt-eslint": "^24.3.0",
         "grunt-git-describe": "^2.4.4",
         "grunt-istanbul": "^0.8.0",
+        "grunt-shell": "^4.0.0",
         "grunt-text-replace": "^0.4.0",
-        "qunit": "^2.19.4"
+        "qunit": "^2.24.1",
+        "tsd": "^0.33.0",
+        "typescript": "^5.9.3"
     },
     "scripts": {
         "test": "grunt test",
         "prepare": "grunt build",
         "build": "grunt build",
         "dev": "grunt dev"
+    },
+    "types": "types/index.d.ts",
+    "tsd": {
+        "directory": "test-dts"
     }
 }

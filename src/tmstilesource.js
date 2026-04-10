@@ -2,7 +2,7 @@
  * OpenSeadragon - TmsTileSource
  *
  * Copyright (C) 2009 CodePlex Foundation
- * Copyright (C) 2010-2024 OpenSeadragon contributors
+ * Copyright (C) 2010-2025 OpenSeadragon contributors
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are
@@ -58,7 +58,7 @@
  * @param {String} tilesUrl
  */
 $.TmsTileSource = function( width, height, tileSize, tileOverlap, tilesUrl ) {
-    var options;
+    let options;
 
     if( $.isPlainObject( width ) ){
         options = width;
@@ -73,9 +73,9 @@ $.TmsTileSource = function( width, height, tileSize, tileOverlap, tilesUrl ) {
     }
     // TMS has integer multiples of 256 for width/height and adds buffer
     // if necessary -> account for this!
-    var bufferedWidth = Math.ceil(options.width / 256) * 256,
-        bufferedHeight = Math.ceil(options.height / 256) * 256,
-        max;
+    const bufferedWidth = Math.ceil(options.width / 256) * 256;
+    const bufferedHeight = Math.ceil(options.height / 256) * 256;
+    let max;
 
     // Compute number of zoomlevels in this tileset
     if (bufferedWidth > bufferedHeight) {
@@ -100,7 +100,7 @@ $.extend( $.TmsTileSource.prototype, $.TileSource.prototype, /** @lends OpenSead
      * this tile source.
      * @function
      * @param {Object|Array} data
-     * @param {String} optional - url
+     * @param {String} [url]
      */
     supports: function( data, url ){
         return ( data.type && "tiledmapservice" === data.type );
@@ -128,7 +128,7 @@ $.extend( $.TmsTileSource.prototype, $.TileSource.prototype, /** @lends OpenSead
      */
     getTileUrl: function( level, x, y ) {
         // Convert from Deep Zoom definition to TMS zoom definition
-        var yTiles = this.getNumTiles( level ).y - 1;
+        const yTiles = this.getNumTiles( level ).y - 1;
 
         return this.tilesUrl + level + "/" + x + "/" + (yTiles - y) + ".png";
     },
@@ -137,7 +137,7 @@ $.extend( $.TmsTileSource.prototype, $.TileSource.prototype, /** @lends OpenSead
      * Equality comparator
      */
     equals: function (otherSource) {
-        return this.tilesUrl === otherSource.tilesUrl;
+        return otherSource && this.tilesUrl === otherSource.tilesUrl;
     }
 });
 

@@ -2,7 +2,7 @@
  * OpenSeadragon - OsmTileSource
  *
  * Copyright (C) 2009 CodePlex Foundation
- * Copyright (C) 2010-2024 OpenSeadragon contributors
+ * Copyright (C) 2010-2025 OpenSeadragon contributors
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are
@@ -53,9 +53,11 @@
  *
  * Note 2. Image dimension. According to the OSM Wiki
  * (http://wiki.openstreetmap.org/wiki/Slippy_map_tilenames#Zoom_levels)
- * the highest Mapnik zoom level has 256.144x256.144 tiles, with a 256x256
- * pixel size. I.e. the Deep Zoom image dimension is 65.572.864x65.572.864
+ * the highest Mapnik zoom level has 262.144x262.144 tiles, with a 256x256
+ * pixel size. I.e. the Deep Zoom image dimension is 67.108.864x67.108.864
  * pixels.
+ * OSM now supports higher max zoom (e.g. 19), but this default is
+ * based on zoom level 18: 2^18 tiles * 256px.
  *
  * @memberof OpenSeadragon
  * @extends OpenSeadragon.TileSource
@@ -67,7 +69,7 @@
  * @param {String} tilesUrl
  */
 $.OsmTileSource = function( width, height, tileSize, tileOverlap, tilesUrl ) {
-    var options;
+    let options;
 
     if( $.isPlainObject( width ) ){
         options = width;
@@ -84,8 +86,8 @@ $.OsmTileSource = function( width, height, tileSize, tileOverlap, tilesUrl ) {
     //but allow them to be specified so fliks can host there own instance
     //or apply against other services supportting the same standard
     if( !options.width || !options.height ){
-        options.width = 65572864;
-        options.height = 65572864;
+        options.width = 67108864;
+        options.height = 67108864;
     }
     if( !options.tileSize ){
         options.tileSize = 256;
@@ -108,7 +110,7 @@ $.extend( $.OsmTileSource.prototype, $.TileSource.prototype, /** @lends OpenSead
      * this tile source.
      * @function
      * @param {Object|Array} data
-     * @param {String} optional - url
+     * @param {String} [url]
      */
     supports: function( data, url ){
         return (
@@ -145,7 +147,7 @@ $.extend( $.OsmTileSource.prototype, $.TileSource.prototype, /** @lends OpenSead
      * Equality comparator
      */
     equals: function(otherSource) {
-        return this.tilesUrl === otherSource.tilesUrl;
+        return otherSource && this.tilesUrl === otherSource.tilesUrl;
     }
 });
 

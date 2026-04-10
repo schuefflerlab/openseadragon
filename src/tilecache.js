@@ -2,7 +2,7 @@
  * OpenSeadragon - TileCache
  *
  * Copyright (C) 2009 CodePlex Foundation
- * Copyright (C) 2010-2024 OpenSeadragon contributors
+ * Copyright (C) 2010-2025 OpenSeadragon contributors
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are
@@ -34,10 +34,12 @@
 
 (function( $ ){
 
+    const OpenSeadragon = $; // alias for JSDoc
+
     const DRAWER_INTERNAL_CACHE = Symbol("DRAWER_INTERNAL_CACHE");
 
     /**
-     * @class CacheRecord
+     * @class OpenSeadragon.CacheRecord
      * @memberof OpenSeadragon
      * @classdesc Cached Data Record, the cache object. Keeps only latest object type required.
      *
@@ -48,7 +50,7 @@
      * Furthermore, it has a 'getData' function that returns a promise resolving
      * with the value on the desired type passed to the function.
      */
-    $.CacheRecord = class {
+    OpenSeadragon.CacheRecord = class CacheRecord {
         constructor() {
             this.revive();
         }
@@ -66,7 +68,7 @@
 
         /**
          * Read the cache type. The type can dynamically change, but should be consistent at
-         * one point in the time. For available types see the OpenSeadragon.Convertor, or the tutorials.
+         * one point in the time. For available types see the OpenSeadragon.Converter, or the tutorials.
          * @returns {string}
          */
         get type() {
@@ -130,7 +132,7 @@
         getDataAs(type = undefined, copy = true) {
             if (this.loaded) {
                 if (type === this._type) {
-                    return copy ? $.convertor.copy(this._tRef, this._data, type || this._type) : this._promise;
+                    return copy ? $.converter.copy(this._tRef, this._data, type || this._type) : this._promise;
                 }
                 return this._transformDataIfNeeded(this._tRef, this._data, type || this._type, copy) || this._promise;
             }
@@ -145,17 +147,20 @@
 
             let result;
             if (type !== this._type) {
-                result = $.convertor.convert(referenceTile, data, this._type, type);
+                result = $.converter.convert(referenceTile, data, this._type, type);
             } else if (copy) { //convert does not copy data if same type, do explicitly
-                result = $.convertor.copy(referenceTile, data, type);
+                result = $.converter.copy(referenceTile, data, type);
             }
             if (result) {
                 return result.then(finalData => {
                     if (this._destroyed) {
-                        $.convertor.destroy(finalData, type);
+                        $.converter.destroy(finalData, type);
                         return undefined;
                     }
                     return finalData;
+                }).catch(e => {
+                    this._handleConversionError(e);
+                    return undefined;
                 });
             }
             return false; // no conversion needed, parent function returns item as-is
@@ -180,15 +185,23 @@
          * @private
          */
         getDataForRendering(drawer, tileToDraw) {
-            const keepInternalCopy = drawer.options.usePrivateCache;
-
             // Test cache state
+            if (this._destroyed) {
+                $.console.error(`Attempt to draw tile with destroyed main cache ${this}!`);
+                tileToDraw._unload();
+                return undefined;
+            }
             if (!this.loaded) {
-                $.console.error("Attempt to draw tile when not loaded main cache!");
+                // If a conversion/load is in progress, it is normal that the cache is temporarily not loaded.
+                // Avoid spamming errors; just skip drawing this tile this frame.
+                if (this._promise) {
+                    return undefined;
+                }
+                $.console.error(`Attempt to draw cache ${this} when not loaded!`);
                 return undefined;
             }
             if (this._destroyed) {
-                $.console.error("Attempt to draw tile with destroyed main cache!");
+                $.console.error(`Attempt to draw tile with destroyed main cache ${this}!`);
                 tileToDraw._unload();  // try to restore the state so that the tile is later on fetched again
                 return undefined;
             }
@@ -198,13 +211,13 @@
             // unable to provide the rendering data immediatelly - return.
             const supportedTypes = drawer.getSupportedDataFormats();
             if (!supportedTypes.includes(this.type)) {
-                $.console.error("Attempt to draw tile with unsupported target drawer type!");
+                $.console.error(`Attempt to draw tile cache ${this} with unsupported type '${this.type}' for the target drawer!`);
                 this.prepareForRendering(drawer);
                 return undefined;
             }
 
             // If we support internal cache
-            if (keepInternalCopy) {
+            if (drawer.options.usePrivateCache) {
                 // let sync preparation handle data if no preloading desired
                 if (!drawer.options.preloadCache) {
                     return this.prepareInternalCacheSync(drawer);
@@ -212,7 +225,7 @@
                 // or check internal cache state before returning
                 const internalCache = this._getInternalCacheRef(drawer);
                 if (!internalCache || !internalCache.loaded) {
-                    $.console.error("Attempt to draw tile with internal cache non-ready state!");
+                    $.console.error(`Attempt to draw tile cache ${this} with internal cache non-ready state!`);
                     return undefined;
                 }
                 return internalCache;
@@ -220,6 +233,27 @@
 
             // else just return self reference
             return this;
+        }
+
+        /**
+         * Check whether the cache is usable for the given drawer. The cache is considered
+         * usable if it is in a format supported by the drawer and, if the drawer uses internal cache,
+         * the internal cache was created (it might not be loaded yet though).
+         * @param {OpenSeadragon.DrawerBase} drawer
+         * @return {boolean}
+         */
+        isUsableForDrawer(drawer) {
+            const supportedTypes = drawer.getSupportedDataFormats();
+            if (!supportedTypes.includes(this.type)) {
+                return false;
+            }
+            if (drawer.options.usePrivateCache) {
+                const internalCache = this._getInternalCacheRef(drawer);
+                if (!internalCache) {
+                    return false;
+                }
+            }
+            return true;
         }
 
         /**
@@ -249,11 +283,16 @@
                 selfPromise = this.await();
             }
 
+            const swallow = (p) => p.catch(e => {
+                this._handleConversionError(e);
+                return null;
+            });
+
             // If internal cache wanted and preloading enabled, convert now
             if (drawer.options.usePrivateCache && drawer.options.preloadCache) {
-                return selfPromise.then(_ => this.prepareInternalCacheAsync(drawer));
+                return swallow(selfPromise.then(_ => this.prepareInternalCacheAsync(drawer)));
             }
-            return selfPromise;
+            return swallow(selfPromise);
         }
 
         /**
@@ -338,6 +377,7 @@
         }
 
         /**
+         * Check if internal cache is up to date. Might be in loading state.
          * @param {OpenSeadragon.InternalCacheRecord} internalCache
          * @param {OpenSeadragon.DrawerBase} drawer
          * @return {boolean} false if the internal cache is outdated
@@ -346,7 +386,7 @@
         _checkInternalCacheUpToDate(internalCache, drawer) {
             // We respect existing records, unless they are outdated. Invalidation routine by its nature
             // destroys internal cache, therefore we do not need to check if internal cache is consistent with its parent.
-            return internalCache && internalCache.loaded && internalCache.tstamp >= drawer._dataNeedsRefresh;
+            return internalCache && internalCache.tstamp >= drawer._dataNeedsRefresh;
         }
 
         /**
@@ -409,7 +449,7 @@
                         delete internal[drawerId];
                     }
                 } else {
-                    for (let iCache in internal) {
+                    for (const iCache in internal) {
                         internal[iCache].destroy();
                     }
                     delete this[DRAWER_INTERNAL_CACHE];
@@ -450,6 +490,11 @@
             this.loaded = false;
             this._promise = null;
             this._destroyed = false;
+
+            // Optional ownership metadata (set by TileCache for managed records).
+            // Working caches created during invalidation are intentionally left without an owner.
+            this._ownerTileCache = null;
+            this.cacheKey = null;
         }
 
         /**
@@ -465,7 +510,7 @@
                     this._destroySelfUnsafe(this._data, this._type);
                 } else if (this._promise) {
                     const oldType = this._type;
-                    this._promise.then(x => this._destroySelfUnsafe(x, oldType));
+                    this._promise.then(x => this._destroySelfUnsafe(x, oldType)).catch($.console.error);
                 }
             }
 
@@ -473,7 +518,7 @@
 
         _destroySelfUnsafe(data, type) {
             // ensure old data destroyed
-            $.convertor.destroy(data, type);
+            $.converter.destroy(data, type);
             this.destroyInternalCache();
             // might've got revived in meanwhile if async ...
             if (!this._destroyed) {
@@ -518,10 +563,21 @@
                 } else {
                     // If we receive async callback, we consume the async state
                     if (data instanceof $.Promise) {
-                        this._promise = data.then(d => {
-                            this._data = d;
+                        this._promise = data.then(data => {
+                            if (this._destroyed) {
+                                try {
+                                    $.converter.destroy(data, this._type);
+                                } catch (e) {
+                                    // no-op
+                                }
+                                return undefined;
+                            }
                             this.loaded = true;
-                            return d;
+                            this._data = data;
+                            return data;
+                        }).catch(e => {
+                            this._handleConversionError(e);
+                            return undefined;
                         });
                         this._data = null;
                     } else {
@@ -613,7 +669,7 @@
         _overwriteData(data, type) {
             if (this._destroyed) {
                 //we have received the ownership of the data, destroy it too since we are destroyed
-                $.convertor.destroy(data, type);
+                $.converter.destroy(data, type);
                 return $.Promise.resolve();
             }
             if (this.loaded) {
@@ -621,13 +677,13 @@
                 if (this._data === data && this._type === type) {
                     return this._promise;
                 }
-                $.convertor.destroy(this._data, this._type);
+                $.converter.destroy(this._data, this._type);
                 this._type = type;
                 this._data = data;
                 this._promise = $.Promise.resolve(data);
                 const internal = this[DRAWER_INTERNAL_CACHE];
                 if (internal) {
-                    for (let iCache in internal) {
+                    for (const iCache in internal) {
                         internal[iCache].setDataAs(data, type);
                     }
                 }
@@ -639,13 +695,13 @@
                 if (this._data === data && this._type === type) {
                     return this._data;
                 }
-                $.convertor.destroy(this._data, this._type);
+                $.converter.destroy(this._data, this._type);
                 this._type = type;
                 this._data = data;
                 this._promise = $.Promise.resolve(data);
                 const internal = this[DRAWER_INTERNAL_CACHE];
                 if (internal) {
-                    for (let iCache in internal) {
+                    for (const iCache in internal) {
                         internal[iCache].setDataAs(data, type);
                     }
                 }
@@ -661,44 +717,82 @@
          * @private
          */
         _convert(from, to) {
-            const convertor = $.convertor,
-                conversionPath = convertor.getConversionPath(from, to);
+            const converter = $.converter,
+                conversionPath = converter.getConversionPath(from, to);
             if (!conversionPath) {
                 $.console.error(`[CacheRecord._convert] Conversion ${from} ---> ${to} cannot be done!`);
                 return; //no-op
             }
 
-            const originalData = this._data,
-                stepCount = conversionPath.length,
-                _this = this,
-                convert = (x, i) => {
-                    if (i >= stepCount) {
-                        _this._data = x;
-                        _this.loaded = true;
-                        _this._checkAwaitsConvert();
-                        return $.Promise.resolve(x);
-                    }
-                    let edge = conversionPath[i];
-                    let y = edge.transform(_this._tRef, x);
-                    if (y === undefined) {
-                        _this.loaded = false;
-                        throw `[CacheRecord._convert] data mid result undefined value (while converting using ${edge}})`;
-                    }
-                    convertor.destroy(x, edge.origin.value);
-                    const result = $.type(y) === "promise" ? y : $.Promise.resolve(y);
-                    return result.then(res => convert(res, i + 1));
-                };
+            const originalData = this._data;
+            const stepCount = conversionPath.length;
+            const _this = this;
+            const convert = (x, i) => {
+                if (i >= stepCount) {
+                    _this._data = x;
+                    _this.loaded = true;
+                    _this._checkAwaitsConvert();
+                    return $.Promise.resolve(x);
+                }
+                const edge = conversionPath[i];
+                let y;
+                try {
+                    y = edge.transform(_this._tRef, x);
+                } catch (err) {
+                    converter.destroy(x, edge.origin.value); // prevent leak
+                    return $.Promise.reject(`[CacheRecord._convert] sync failure (while converting using ${edge.target.value}, ${edge.origin.value})`);
+                }
+                if (y === undefined) {
+                    _this.loaded = false;
+                    converter.destroy(x, edge.origin.value); // prevent leak
+                    return $.Promise.reject(`[CacheRecord._convert] data mid result undefined value (while converting using ${edge.target.value}, ${edge.origin.value})`);
+                }
+                converter.destroy(x, edge.origin.value);
+                const result = $.type(y) === "promise" ? y : $.Promise.resolve(y);
+                return result.then(res => convert(res, i + 1));
+            };
 
             this.loaded = false;
             this._data = undefined;
             // Read target type from the conversion path: [edge.target] = Vertex, its value=type
             this._type = conversionPath[stepCount - 1].target.value;
-            this._promise = convert(originalData, 0);
+
+            // IMPORTANT: conversion failures must not poison the cache record with a permanently
+            // rejected promise (methods rely on being able to await() without throwing).
+            this._promise = convert(originalData, 0).catch(e => {
+                this._handleConversionError(e);
+                return undefined;
+            });
+        }
+
+        /**
+         * Handle conversion error by cleaning up and unloading affected tiles
+         * @param {Error} e
+         * @private
+         */
+        _handleConversionError(e) {
+            $.console.error("[CacheRecord] Conversion/preparation error:", e);
+
+            this._destroyed = true;
+            this.loaded = false;
+            this._data = null;
+
+            // WORKING CACHE: do not escalate to TileCache, do not unload tiles.
+            // A working cache is not registered (no cacheKey and/or no owner).
+            if (!this.cacheKey || !this._ownerTileCache) {
+                this._promise = $.Promise.resolve(undefined);
+                this._tiles = [];
+                this._tRef = null;
+                return;
+            }
+
+            // MANAGED CACHE: notify TileCache to remove record and possibly mark tile missing.
+            this._ownerTileCache._handleBrokenCacheRecord(this);
         }
     };
 
     /**
-     * @class InternalCacheRecord
+     * @class OpenSeadragon.InternalCacheRecord
      * @memberof OpenSeadragon
      * @classdesc Simple cache record without robust support for async access. Meant for internal use only.
      *
@@ -710,7 +804,7 @@
      * It also does not record tiles nor allows cache/tile sharing.
      * @private
      */
-    $.InternalCacheRecord = class {
+    OpenSeadragon.InternalCacheRecord = class InternalCacheRecord {
         constructor(data, type, onDestroy) {
             this.tstamp = $.now();
             this._ondestroy = onDestroy;
@@ -781,8 +875,9 @@
         }
     };
 
+
     /**
-     * @class TileCache
+     * @class OpenSeadragon.TileCache
      * @memberof OpenSeadragon
      * @classdesc Stores all the tiles displayed in a {@link OpenSeadragon.Viewer}.
      * You generally won't have to interact with the TileCache directly.
@@ -790,11 +885,13 @@
      * @param {Number} [options.maxImageCacheCount] - See maxImageCacheCount in
      * {@link OpenSeadragon.Options} for details.
      */
-    $.TileCache = class {
+    OpenSeadragon.TileCache = class TileCache {
         constructor( options ) {
+
             options = options || {};
 
             this._maxCacheItemCount = options.maxImageCacheCount || $.DEFAULT_SETTINGS.maxImageCacheCount;
+            // requestInvalidate() touches this private property due to performance reasons
             this._tilesLoaded = [];
             this._zombiesLoaded = [];
             this._zombiesLoadedCount = 0;
@@ -839,19 +936,19 @@
          *   tiles will not be released.
          * @returns {OpenSeadragon.CacheRecord} - The cache record the tile was attached to.
          */
-        cacheTile( options ) {
-            $.console.assert( options, "[TileCache.cacheTile] options is required" );
+        cacheTile(options) {
+            $.console.assert(options, "[TileCache.cacheTile] options is required");
             const theTile = options.tile;
-            $.console.assert( theTile, "[TileCache.cacheTile] options.tile is required" );
-            $.console.assert( theTile.cacheKey, "[TileCache.cacheTile] options.tile.cacheKey is required" );
+            $.console.assert(theTile, "[TileCache.cacheTile] options.tile is required");
+            $.console.assert(theTile.cacheKey, "[TileCache.cacheTile] options.tile.cacheKey is required");
 
             if (options.image instanceof Image) {
-                $.console.warn("[TileCache.cacheTile] options.image is deprecated!" );
+                $.console.warn("[TileCache.cacheTile] options.image is deprecated!");
                 options.data = options.image;
                 options.dataType = "image";
             }
 
-            let cacheKey = options.cacheKey || theTile.cacheKey;
+            const cacheKey = options.cacheKey || theTile.cacheKey;
 
             let cacheRecord = this._cachesLoaded[cacheKey];
             if (!cacheRecord) {
@@ -870,7 +967,7 @@
                     } else {
                         // if zombie ready, do not overwrite its data, in that case try to call
                         // we need to trigger invalidation routine, data was not part of the system!
-                        if (typeof data === 'function') {
+                        if (typeof options.data === 'function') {
                             options.data();
                         }
                         delete options.data;
@@ -882,7 +979,7 @@
                 } else {
                     //allow anything but undefined, null, false (other values mean the data was set, for example '0')
                     const validData = options.data !== undefined && options.data !== null && options.data !== false;
-                    $.console.assert( validData, "[TileCache.cacheTile] options.data is required to create an CacheRecord" );
+                    $.console.assert(validData, "[TileCache.cacheTile] options.data is required to create an CacheRecord");
                     cacheRecord = this._cachesLoaded[cacheKey] = new $.CacheRecord();
                     this._cachesLoadedCount++;
                 }
@@ -897,9 +994,11 @@
                     $.console.error("[TileCache.cacheTile] options.dataType is mandatory " +
                         " when data item is a callback!");
                 }
-                options.dataType = $.convertor.guessType(options.data);
+                options.dataType = $.converter.guessType(options.data);
             }
 
+            cacheRecord._ownerTileCache = this;
+            cacheRecord.cacheKey = cacheKey;
             cacheRecord.addTile(theTile, options.data, options.dataType);
             this._freeOldRecordRoutine(theTile, options.cutoff || 0);
             return cacheRecord;
@@ -913,14 +1012,14 @@
          * @param {String} options.newCacheKey - New key to set
          * @return {OpenSeadragon.CacheRecord | null}
          */
-        renameCache( options ) {
+        renameCache(options) {
             const newKey = options.newCacheKey,
                 oldKey = options.oldCacheKey;
             let originalCache = this._cachesLoaded[oldKey];
 
             if (!originalCache) {
                 originalCache = this._zombiesLoaded[oldKey];
-                $.console.assert( originalCache, "[TileCache.renameCache] oldCacheKey must reference existing cache!" );
+                $.console.assert(originalCache, "[TileCache.renameCache] oldCacheKey must reference existing cache!");
                 if (this._zombiesLoaded[newKey]) {
                     $.console.error("Cannot rename zombie cache %s to %s: the target cache is occupied!",
                         oldKey, newKey);
@@ -937,7 +1036,9 @@
                 delete this._cachesLoaded[oldKey];
             }
 
-            for (let tile of originalCache._tiles) {
+            originalCache._ownerTileCache = this;
+            originalCache.cacheKey = newKey;
+            for (const tile of originalCache._tiles) {
                 tile.reflectCacheRenamed(oldKey, newKey);
             }
 
@@ -969,7 +1070,7 @@
 
             const desiredType = options.desiredType || undefined;
             return cacheRecord.getDataAs(desiredType, true).then(data => {
-                let newRecord = this._cachesLoaded[options.newCacheKey] = new $.CacheRecord();
+                const newRecord = this._cachesLoaded[options.newCacheKey] = new $.CacheRecord();
                 newRecord.addTile(theTile, data, cacheRecord.type);
                 this._cachesLoadedCount++;
                 this._freeOldRecordRoutine(theTile, options.cutoff || 0);
@@ -1001,7 +1102,7 @@
             if (consumer) {
                 // We need to avoid async execution here: replace consumer instead of overwriting the data.
                 const iterateTiles = [...consumer._tiles];  // unloadCacheForTile() will modify the array, use a copy
-                for (let tile of iterateTiles) {
+                for (const tile of iterateTiles) {
                     this.unloadCacheForTile(tile, targetKey, true, false);
                 }
             }
@@ -1011,9 +1112,11 @@
 
             const cache = options.cache;
             this._cachesLoaded[targetKey] = cache;
+            cache._ownerTileCache = this;
+            cache.cacheKey = targetKey;
 
             // Update cache: add the new cache, we must add since we removed above with unloadCacheForTile()
-            for (let t of tile.getCache(tile.originalCacheKey)._tiles) {  // grab all cache-equal tiles
+            for (const t of tile.getCache(tile.originalCacheKey)._tiles) {  // grab all cache-equal tiles
                 t.setCache(targetKey, cache, options.setAsMainCache, false);
             }
         }
@@ -1046,7 +1149,7 @@
             if (consumer) {
                 // We need to avoid async execution here: replace consumer instead of overwriting the data.
                 const iterateTiles = [...consumer._tiles];  // unloadCacheForTile() will modify the array, use a copy
-                for (let tile of iterateTiles) {
+                for (const tile of iterateTiles) {
                     this.unloadCacheForTile(tile, consumerKey, true, false);
                 }
             }
@@ -1062,7 +1165,7 @@
             if (resultCache) {
                 // Only one cache got working item, other caches were idle: update cache: add the new cache
                 // we must add since we removed above with unloadCacheForTile()
-                for (let t of tile.getCache(tile.originalCacheKey)._tiles) {  // grab all cache-equal tiles
+                for (const t of tile.getCache(tile.originalCacheKey)._tiles) {  // grab all cache-equal tiles
                     t.setCache(consumerKey, resultCache, options.setAsMainCache, false);
                 }
             }
@@ -1077,7 +1180,7 @@
          * @private
          */
         restoreTilesThatShareOriginalCache(tile, originalCache, freeIfUnused) {
-            for (let t of originalCache._tiles) {
+            for (const t of originalCache._tiles) {
                 if (t.cacheKey !== t.originalCacheKey) {
                     this.unloadCacheForTile(t, t.cacheKey, freeIfUnused, true);
                     delete t._caches[t.cacheKey];
@@ -1092,10 +1195,10 @@
 
             // Note that just because we're unloading a tile doesn't necessarily mean
             // we're unloading its cache records. With repeated calls it should sort itself out, though.
-            if ( this._cachesLoadedCount + this._zombiesLoadedCount > this._maxCacheItemCount ) {
+            if (this._cachesLoadedCount + this._zombiesLoadedCount > this._maxCacheItemCount) {
                 //prefer zombie deletion, faster, better
                 if (this._zombiesLoadedCount > 0) {
-                    for (let zombie in this._zombiesLoaded) {
+                    for (const zombie in this._zombiesLoaded) {
                         this._zombiesLoaded[zombie].destroy();
                         delete this._zombiesLoaded[zombie];
                         this._zombiesLoadedCount--;
@@ -1105,34 +1208,34 @@
                     let worstTile = null;
                     let prevTile, worstTime, worstLevel, prevTime, prevLevel;
 
-                    for ( let i = this._tilesLoaded.length - 1; i >= 0; i-- ) {
-                        prevTile = this._tilesLoaded[ i ];
+                    for (let i = this._tilesLoaded.length - 1; i >= 0; i--) {
+                        prevTile = this._tilesLoaded[i];
 
-                        if ( prevTile.level <= cutoff ||
+                        if (prevTile.level <= cutoff ||
                             prevTile.beingDrawn ||
                             prevTile.loading ||
-                            prevTile.processing ) {
+                            prevTile.processing) {
                             continue;
                         }
-                        if ( !worstTile ) {
-                            worstTile       = prevTile;
-                            worstTileIndex  = i;
+                        if (!worstTile) {
+                            worstTile = prevTile;
+                            worstTileIndex = i;
                             continue;
                         }
 
-                        prevTime    = prevTile.lastTouchTime;
-                        worstTime   = worstTile.lastTouchTime;
-                        prevLevel   = prevTile.level;
-                        worstLevel  = worstTile.level;
+                        prevTime = prevTile.lastTouchTime;
+                        worstTime = worstTile.lastTouchTime;
+                        prevLevel = prevTile.level;
+                        worstLevel = worstTile.level;
 
-                        if ( prevTime < worstTime ||
-                            ( prevTime === worstTime && prevLevel > worstLevel )) {
-                            worstTile       = prevTile;
-                            worstTileIndex  = i;
+                        if (prevTime < worstTime ||
+                            (prevTime === worstTime && prevLevel > worstLevel)) {
+                            worstTile = prevTile;
+                            worstTileIndex = i;
                         }
                     }
 
-                    if ( worstTile && worstTileIndex >= 0 ) {
+                    if (worstTile && worstTileIndex >= 0) {
                         this._unloadTile(worstTile, true);
                         insertionIndex = worstTileIndex;
                     }
@@ -1140,39 +1243,77 @@
             }
 
             if (theTile.getCacheSize() === 0) {
-                this._tilesLoaded[ insertionIndex ] = theTile;
+                this._tilesLoaded[insertionIndex] = theTile;
             } else if (worstTileIndex >= 0) {
                 //tile is already recorded, do not add tile, but remove the tile at insertion index
                 this._tilesLoaded.splice(insertionIndex, 1);
             }
         }
 
+        _handleBrokenCacheRecord(cache) {
+            if (!cache) {
+                return;
+            }
+
+            const key = cache.cacheKey;
+
+            if (key && this._cachesLoaded[key] === cache) {
+                delete this._cachesLoaded[key];
+                this._cachesLoadedCount--;
+            }
+            if (key && this._zombiesLoaded[key] === cache) {
+                delete this._zombiesLoaded[key];
+                this._zombiesLoadedCount--;
+            }
+
+            const tiles = cache._tiles ? [...cache._tiles] : [];
+            for (const tile of tiles) {
+                const isMainCache = tile.getCache && tile.getCache() === cache;
+                const isOriginalCache = key && tile.originalCacheKey === key;
+
+                if (isMainCache || isOriginalCache) {
+                    tile.exists = false; // prevents the tile from loading (TODO: consider ability to revive!)
+                    tile.unload(true);
+                } else {
+                    if (tile.removeCache && key) {
+                        tile.removeCache(key);
+                    }
+                    cache.removeTile(tile);
+                }
+            }
+
+            cache._promise = $.Promise.resolve(undefined);
+            cache._tiles = [];
+            cache._tRef = null;
+            cache._ownerTileCache = null;
+        }
+
         /**
          * Clears all tiles associated with the specified tiledImage.
          * @param {OpenSeadragon.TiledImage} tiledImage
          */
-        clearTilesFor( tiledImage ) {
+        clearTilesFor(tiledImage) {
             $.console.assert(tiledImage, '[TileCache.clearTilesFor] tiledImage is required');
             let tile;
 
             let cacheOverflows = this._cachesLoadedCount + this._zombiesLoadedCount > this._maxCacheItemCount;
             if (tiledImage._zombieCache && cacheOverflows && this._zombiesLoadedCount > 0) {
                 //prefer newer (fresh ;) zombies
-                for (let zombie in this._zombiesLoaded) {
+                for (const zombie in this._zombiesLoaded) {
                     this._zombiesLoaded[zombie].destroy();
                     delete this._zombiesLoaded[zombie];
                 }
                 this._zombiesLoadedCount = 0;
                 cacheOverflows = this._cachesLoadedCount > this._maxCacheItemCount;
             }
-            for ( let i = this._tilesLoaded.length - 1; i >= 0; i-- ) {
-                tile = this._tilesLoaded[ i ];
+            for (let i = this._tilesLoaded.length - 1; i >= 0; i--) {
+                tile = this._tilesLoaded[i];
 
                 if (tile.tiledImage === tiledImage) {
                     if (!tile.loaded) {
                         //iterates from the array end, safe to remove
-                        this._tilesLoaded.splice( i, 1 );
-                    } else if ( tile.tiledImage === tiledImage ) {
+                        this._tilesLoaded.splice(i, 1);
+                    } else if (tile.tiledImage === tiledImage) {
                         this._unloadTile(tile, !tiledImage._zombieCache || cacheOverflows, i);
                     }
                 }
@@ -1184,11 +1325,11 @@
          * @param {boolean} withZombies
          */
         clear(withZombies = true) {
-            for (let zombie in this._zombiesLoaded) {
+            for (const zombie in this._zombiesLoaded) {
                 this._zombiesLoaded[zombie].destroy();
             }
-            for (let tile in this._tilesLoaded) {
-                this._unloadTile(tile, true, undefined);
+            for (const tile in this._tilesLoaded) {
+                this._unloadTile(tile, true);
             }
             this._tilesLoaded = [];
             this._zombiesLoaded = [];
@@ -1203,12 +1344,12 @@
          */
         clearDrawerInternalCache(drawer) {
             const drawerId = drawer.getId();
-            for (let zombie of this._zombiesLoaded) {
+            for (const zombie of this._zombiesLoaded) {
                 if (zombie) {
                     zombie.destroyInternalCache(drawerId);
                 }
             }
-            for (let cache of this._cachesLoaded) {
+            for (const cache of this._cachesLoaded) {
                 if (cache) {
                     cache.destroyInternalCache(drawerId);
                 }
@@ -1243,18 +1384,18 @@
          * @param {OpenSeadragon.CacheRecord} cache
          */
         safeUnloadCache(cache) {
-           if (cache && !cache._destroyed && cache.getTileCount() < 1) {
-               for (let i in this._zombiesLoaded) {
-                   const c = this._zombiesLoaded[i];
-                   if (c === cache) {
-                       delete this._zombiesLoaded[i];
-                       c.destroy();
-                       return;
-                   }
-               }
-               $.console.error("Attempt to delete an orphan cache that is not in zombie list: this could be a bug!", cache);
-               cache.destroy();
-           }
+            if (cache && !cache._destroyed && cache.getTileCount() < 1) {
+                for (const i in this._zombiesLoaded) {
+                    const c = this._zombiesLoaded[i];
+                    if (c === cache) {
+                        delete this._zombiesLoaded[i];
+                        c.destroy();
+                        return;
+                    }
+                }
+                $.console.error("Attempt to delete an orphan cache that is not in zombie list: this could be a bug!", cache);
+                cache.destroy();
+            }
         }
 
         /**
@@ -1310,22 +1451,22 @@
         }
 
         /**
-         * @param tile tile to unload
-         * @param destroy destroy tile cache if the cache tile counts falls to zero
-         * @param deleteAtIndex index to remove the tile record at, will not remove from _tilesLoaded if not set
+         * @param {OpenSeadragon.Tile} tile tile to unload
+         * @param {boolean} destroy destroy tile cache if the cache tile counts falls to zero
+         * @param {Number} [deleteAtIndex=undefined] index to remove the tile record at, will not remove from _tilesLoaded if not set
          * @private
          */
-        _unloadTile(tile, destroy, deleteAtIndex) {
+        _unloadTile(tile, destroy, deleteAtIndex = undefined) {
             $.console.assert(tile, '[TileCache._unloadTile] tile is required');
 
-            for (let key in tile._caches) {
+            for (const key in tile._caches) {
                 //we are 'ok' to remove tile caches here since we later call destroy on tile, otherwise
                 //tile has count of its cache size --> would be inconsistent
                 this.unloadCacheForTile(tile, key, destroy, false);
             }
             //delete also the tile record
             if (deleteAtIndex !== undefined) {
-                this._tilesLoaded.splice( deleteAtIndex, 1 );
+                this._tilesLoaded.splice(deleteAtIndex, 1);
             }
 
             // Possible error: it can happen that unloaded tile gets to this stage. Should it even be allowed to happen?
@@ -1352,4 +1493,4 @@
         }
     };
 
-}( OpenSeadragon ));
+}(OpenSeadragon));

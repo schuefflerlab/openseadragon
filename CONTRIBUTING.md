@@ -61,9 +61,13 @@ Our tests are based on [QUnit](https://qunitjs.com/) and [Puppeteer](https://git
 
     grunt test
 
-To test a specific module (`navigator` here) only:
+To test a specific module only (`navigator` here):
 
     grunt test --module="navigator"
+
+> [!TIP]
+> The argument can be found
+> for example in the module definition: `QUnit.module('<name here>', ...`
 
 If you wish to work interactively with the tests or test your changes:
 
@@ -74,7 +78,8 @@ and open `http://localhost:8000/test/test.html` in your browser.
 Another good page, if you want to interactively test out your changes, is `http://localhost:8000/test/demo/basic.html`.
 
 
-> Note: corresponding npm commands for the above are:
+> [!NOTE] 
+> corresponding npm commands for the above are:
 >  - npm run test
 >  - npm run test -- --module="navigator"
 >  - npm run dev
@@ -94,3 +99,8 @@ This project is now compatible with direct installation of forked Github repos/b
 1. Add the specific forked repo/branch by running `npm install git://github.com/username/openseadragon.git#branch-name` or `yarn add git://github.com/username/openseadragon.git#branch-name`. Make sure to replace username and branch-name with proper targets.
 
 During installation, the package should be correctly built via grunt and can then be used via `import Openseadragon from 'openseadragon'` or `var Openseadragon = require('openseadragon')` statements as if the official package were installed.
+
+### Async Debugging
+Some things like data loading and processing is asynchronous. To debug, you can use ``OpenSeadragon.trace(...)``
+method, which does not force synchronization and preserves the original behavior as much as possible.
+Note that you should not publish calls to this method in production code.

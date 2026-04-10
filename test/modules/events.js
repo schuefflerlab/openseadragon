@@ -1,8 +1,8 @@
 /* global QUnit, $, TouchUtil, Util, testLog */
 
 (function () {
-    var viewer;
-    var sleep = time => new Promise(res => setTimeout(res, time));
+    let viewer;
+    const sleep = time => new Promise(res => setTimeout(res, time));
 
     QUnit.module( 'Events', {
         beforeEach: function () {
@@ -26,43 +26,245 @@
     } );
 
     // ----------
-    QUnit.test( 'MouseTracker: mouse gestures', function (assert) {
-        var done = assert.async();
-        var $canvas = $( viewer.element ).find( '.openseadragon-canvas' ).not( '.navigator .openseadragon-canvas' ),
-            simEvent = {},
-            offset = $canvas.offset(),
-            tracker = viewer.innerTracker,
-            origEnterHandler,
-            origLeaveHandler,
-            origPressHandler,
-            origReleaseHandler,
-            origNonPrimaryPressHandler,
-            origNonPrimaryReleaseHandler,
-            origMoveHandler,
-            origClickHandler,
-            origDblClickHandler,
-            origDragHandler,
-            origDragEndHandler,
-            enterCount,
-            leaveCount,
-            pressCount,
-            releaseCount,
-            rightPressCount,
-            rightReleaseCount,
-            middlePressCount,
-            middleReleaseCount,
-            moveCount,
-            clickCount,
-            dblClickCount,
-            dragCount,
-            dragEndCount,
-            insideElementPressed,
-            insideElementReleased,
-            quickClick,
-            speed,
-            direction;
+    QUnit.test( 'MouseTracker: DOM event propagation', function (assert) {
+        const done = assert.async();
+        const $canvas = $( viewer.element ).find( '.openseadragon-canvas' ).not( '.navigator .openseadragon-canvas' );
+        let simEvent = {};
+        const offset = $canvas.offset();
+        const tracker = viewer.innerTracker;
+        const parentTracker = viewer.outerTracker;
+        let stopPropagation;
+        let stopImmediatePropagation;
+        let origPreProcessEventHandler;
+        let origMoveHandler;
+        let origParentMoveHandler;
+        let preProcessEventCount;
+        let moveCount;
+        let secondaryMoveCount;
+        let parentMoveCount;
 
-        var hookViewerHandlers = function () {
+        const handleMouseMove = function ( /*event*/ ) {
+            secondaryMoveCount++;
+        };
+
+        const hookViewerHandlers = function () {
+            origPreProcessEventHandler = tracker.preProcessEventHandler;
+            tracker.preProcessEventHandler = function ( eventInfo ) {
+                preProcessEventCount++;
+                if (origPreProcessEventHandler) {
+                    origPreProcessEventHandler( eventInfo );
+                }
+                eventInfo.stopPropagation = stopPropagation;
+                eventInfo.stopImmediatePropagation = stopImmediatePropagation;
+            };
+            origMoveHandler = tracker.moveHandler;
+            tracker.moveHandler = function ( event ) {
+                moveCount++;
+                if (origMoveHandler) {
+                    origMoveHandler( event );
+                }
+            };
+
+            OpenSeadragon.addEvent(
+                tracker.element,
+                'mousemove',
+                handleMouseMove,
+                false
+            );
+
+            origParentMoveHandler = parentTracker.moveHandler;
+            parentTracker.moveHandler = function ( event ) {
+                parentMoveCount++;
+                if (origParentMoveHandler) {
+                    origParentMoveHandler( event );
+                }
+            };
+        };
+
+        const unhookViewerHandlers = function () {
+            tracker.preProcessEventHandler = origPreProcessEventHandler;
+            tracker.moveHandler = origMoveHandler;
+
+            OpenSeadragon.removeEvent(
+                tracker.element,
+                'mousemove',
+                handleMouseMove,
+                false
+            );
+
+            parentTracker.moveHandler = origParentMoveHandler;
+        };
+
+        const simulateEnter = function (x, y) {
+            simEvent.clientX = offset.left + x;
+            simEvent.clientY = offset.top + y;
+            $canvas.simulate( 'mouseenter', simEvent );
+        };
+
+        const simulateLeave = function (x, y) {
+            simEvent.clientX = offset.left + x;
+            simEvent.clientY = offset.top + y;
+            simEvent.relatedTarget = document.body;
+            $canvas.simulate( 'mouseleave', simEvent );
+        };
+
+        const simulateMove = function (dX, dY, count) {
+            for ( let i = 0; i < count; i++ ) {
+                simEvent.clientX += dX;
+                simEvent.clientY += dY;
+                $canvas.simulate( 'mousemove', simEvent );
+            }
+        };
+
+        const resetForAssessment = function () {
+            simEvent = {
+                button: 0,
+                clientX: offset.left,
+                clientY: offset.top
+            };
+            stopPropagation = false;
+            stopImmediatePropagation = false;
+            preProcessEventCount = 0;
+            moveCount = 0;
+            secondaryMoveCount = 0;
+            parentMoveCount = 0;
+        };
+
+        const assessGestureExpectations = function (expected) {
+            if ('preProcessEventCount' in expected) {
+                assert.equal( preProcessEventCount, expected.preProcessEventCount, expected.description + 'preProcessEventHandler event count matches expected (' + expected.preProcessEventCount + ')' );
+            }
+            if ('moveCount' in expected) {
+                assert.equal( moveCount, expected.moveCount, expected.description + 'moveHandler event count matches expected (' + expected.moveCount + ')' );
+            }
+
+            if ('secondaryMoveCount' in expected) {
+                assert.equal( secondaryMoveCount, expected.secondaryMoveCount, expected.description + 'secondary moveHandler event count matches expected (' + expected.secondaryMoveCount + ')' );
+            }
+
+            if ('parentMoveCount' in expected) {
+                assert.equal( parentMoveCount, expected.parentMoveCount, expected.description + 'parent moveHandler event count matches expected (' + expected.parentMoveCount + ')' );
+            }
+        };
+
+        const onOpen = function ( event ) {
+
+            viewer.removeHandler( 'open', onOpen );
+
+            hookViewerHandlers();
+
+            // stopPropagation false stopImmediatePropagation false
+            resetForAssessment();
+            stopPropagation = false;
+            stopImmediatePropagation = false;
+            simulateEnter(0, 0);
+            simulateMove(1, 1, 10);
+            simulateMove(-1, -1, 10);
+            simulateLeave(-1, -1);
+            assessGestureExpectations({
+                description:           'stopPropagation false stopImmediatePropagation false:  ',
+                preProcessEventCount:  22,
+                moveCount:             20,
+                secondaryMoveCount:    20,
+                parentMoveCount:       20,
+            });
+
+            // stopPropagation true stopImmediatePropagation false
+            resetForAssessment();
+            stopPropagation = true;
+            stopImmediatePropagation = false;
+            simulateEnter(0, 0);
+            simulateMove(1, 1, 10);
+            simulateMove(-1, -1, 10);
+            simulateLeave(-1, -1);
+            assessGestureExpectations({
+                description:           'stopPropagation true stopImmediatePropagation false:  ',
+                preProcessEventCount:  22,
+                moveCount:             20,
+                secondaryMoveCount:    20,
+                parentMoveCount:       0,
+            });
+
+            // stopPropagation false stopImmediatePropagation true
+            resetForAssessment();
+            stopPropagation = false;
+            stopImmediatePropagation = true;
+            simulateEnter(0, 0);
+            simulateMove(1, 1, 10);
+            simulateMove(-1, -1, 10);
+            simulateLeave(-1, -1);
+            assessGestureExpectations({
+                description:           'stopPropagation false stopImmediatePropagation true:  ',
+                preProcessEventCount:  22,
+                moveCount:             20,
+                secondaryMoveCount:    0,
+                parentMoveCount:       0,
+            });
+
+            // stopPropagation true stopImmediatePropagation true
+            resetForAssessment();
+            stopPropagation = true;
+            stopImmediatePropagation = true;
+            simulateEnter(0, 0);
+            simulateMove(1, 1, 10);
+            simulateMove(-1, -1, 10);
+            simulateLeave(-1, -1);
+            assessGestureExpectations({
+                description:           'stopPropagation true stopImmediatePropagation true:  ',
+                preProcessEventCount:  22,
+                moveCount:             20,
+                secondaryMoveCount:    0,
+                parentMoveCount:       0,
+            });
+
+            unhookViewerHandlers();
+
+            viewer.close();
+            done();
+        };
+
+        viewer.addHandler( 'open', onOpen );
+        viewer.open( '/test/data/testpattern.dzi' );
+    } );
+
+    // ----------
+    QUnit.test( 'MouseTracker: mouse gestures', function (assert) {
+        const done = assert.async();
+        const $canvas = $( viewer.element ).find( '.openseadragon-canvas' ).not( '.navigator .openseadragon-canvas' );
+        let simEvent = {};
+        const offset = $canvas.offset();
+        const tracker = viewer.innerTracker;
+        let origEnterHandler;
+        let origLeaveHandler;
+        let origPressHandler;
+        let origReleaseHandler;
+        let origNonPrimaryPressHandler;
+        let  origNonPrimaryReleaseHandler;
+        let  origMoveHandler;
+        let  origClickHandler;
+        let  origDblClickHandler;
+        let  origDragHandler;
+        let  origDragEndHandler;
+        let  enterCount;
+        let  leaveCount;
+        let  pressCount;
+        let  releaseCount;
+        let  rightPressCount;
+        let  rightReleaseCount;
+        let  middlePressCount;
+        let  middleReleaseCount;
+        let  moveCount;
+        let  clickCount;
+        let  dblClickCount;
+        let  dragCount;
+        let  dragEndCount;
+        let  insideElementPressed;
+        let  insideElementReleased;
+        let  quickClick;
+        let  speed;
+        let  direction;
+
+        const hookViewerHandlers = function () {
             origEnterHandler = tracker.enterHandler;
             tracker.enterHandler = function ( event ) {
                 enterCount++;
@@ -181,7 +383,7 @@
             };
         };
 
-        var unhookViewerHandlers = function () {
+        const unhookViewerHandlers = function () {
             tracker.enterHandler = origEnterHandler;
             tracker.leaveHandler = origLeaveHandler;
             tracker.pressHandler = origPressHandler;
@@ -193,64 +395,63 @@
             tracker.dragEndHandler = origDragEndHandler;
         };
 
-        var simulateEnter = function (x, y) {
+        const simulateEnter = function (x, y) {
             simEvent.clientX = offset.left + x;
             simEvent.clientY = offset.top + y;
             $canvas.simulate( 'mouseenter', simEvent );
         };
 
-        var simulateLeave = function (x, y) {
+        const simulateLeave = function (x, y) {
             simEvent.clientX = offset.left + x;
             simEvent.clientY = offset.top + y;
             simEvent.relatedTarget = document.body;
             $canvas.simulate( 'mouseleave', simEvent );
         };
 
-        //var simulateLeaveFrame = function (x, y) {
+        //const simulateLeaveFrame = function (x, y) {
         //    simEvent.clientX = offset.left + x;
         //    simEvent.clientY = offset.top  + y;
         //    simEvent.relatedTarget = document.getElementsByTagName("html")[0];
         //    $canvas.simulate( 'mouseleave', simEvent );
         //};
 
-        var simulateDown = function (x, y) {
+        const simulateDown = function (x, y) {
             simEvent.button = 0;
             simEvent.clientX = offset.left + x;
             simEvent.clientY = offset.top + y;
             $canvas.simulate( 'mousedown', simEvent );
         };
 
-        var simulateUp = function (x, y) {
+        const simulateUp = function (x, y) {
             simEvent.button = 0;
             simEvent.clientX = offset.left + x;
             simEvent.clientY = offset.top + y;
             $canvas.simulate( 'mouseup', simEvent );
         };
 
-        var simulateNonPrimaryDown = function (x, y, button) {
+        const simulateNonPrimaryDown = function (x, y, button) {
             simEvent.button = button;
             simEvent.clientX = offset.left + x;
             simEvent.clientY = offset.top + y;
             $canvas.simulate( 'mousedown', simEvent );
         };
 
-        var simulateNonPrimaryUp = function (x, y, button) {
+        const simulateNonPrimaryUp = function (x, y, button) {
             simEvent.button = button;
             simEvent.clientX = offset.left + x;
             simEvent.clientY = offset.top + y;
             $canvas.simulate( 'mouseup', simEvent );
         };
 
-        var simulateMove = function (dX, dY, count) {
-            var i;
-            for ( i = 0; i < count; i++ ) {
+        const simulateMove = function (dX, dY, count) {
+            for ( let i = 0; i < count; i++ ) {
                 simEvent.clientX += dX;
                 simEvent.clientY += dY;
                 $canvas.simulate( 'mousemove', simEvent );
             }
         };
 
-        var resetForAssessment = function () {
+        const resetForAssessment = function () {
             simEvent = {
                 button: 0,
                 clientX: offset.left,
@@ -276,8 +477,8 @@
             direction = 2 * Math.PI;
         };
 
-        var assessGestureExpectations = function (expected) {
-            var pointersList = tracker.getActivePointersListByType('mouse');
+        const assessGestureExpectations = function (expected) {
+            const pointersList = tracker.getActivePointersListByType('mouse');
             if ('enterCount' in expected) {
                 assert.equal( enterCount, expected.enterCount, expected.description + 'enterHandler event count matches expected (' + expected.enterCount + ')' );
             }
@@ -340,7 +541,7 @@
             }
         };
 
-        var onOpen = function ( event ) {
+        const onOpen = function ( event ) {
 
             viewer.removeHandler( 'open', onOpen );
 
@@ -652,17 +853,17 @@
     // ----------
     if ('TouchEvent' in window) {
         QUnit.test( 'MouseTracker: touch events', function (assert) {
-            var done = assert.async();
-            var tracker = viewer.innerTracker,
-                touches;
+            const done = assert.async();
+            const tracker = viewer.innerTracker;
+            let touches;
 
-            var reset = function () {
+            const reset = function () {
                 touches = [];
                 TouchUtil.reset();
             };
 
-            var assessTouchExpectations = function ( expected ) {
-                var pointersList = tracker.getActivePointersListByType( 'touch' );
+            const assessTouchExpectations = function ( expected ) {
+                const pointersList = tracker.getActivePointersListByType( 'touch' );
                 if ('captureCount' in expected) {
                     assert.equal( pointersList.captureCount, expected.captureCount, expected.description + 'Pointer capture count matches expected (' + expected.captureCount + ')' );
                 }
@@ -674,7 +875,7 @@
                 }
             };
 
-            var onOpen = function ( event ) {
+            const onOpen = function ( event ) {
                 viewer.removeHandler( 'open', onOpen );
 
                 TouchUtil.initTracker( tracker );
@@ -727,10 +928,10 @@
 
     // ----------
     QUnit.test('Viewer: preventDefaultAction', function(assert) {
-        var done = assert.async();
-        var $canvas = $(viewer.element).find('.openseadragon-canvas')
+        const done = assert.async();
+        const $canvas = $(viewer.element).find('.openseadragon-canvas')
             .not('.navigator .openseadragon-canvas');
-        var epsilon = 0.0000001;
+        const epsilon = 0.0000001;
 
         function simulateClickAndDrag() {
             $canvas.simulate('focus');
@@ -755,26 +956,26 @@
             $canvas.simulate('blur');
         }
 
-        var onOpen = function() {
+        const onOpen = function() {
             viewer.removeHandler('open', onOpen);
 
             // Hook viewer events to set preventDefaultAction
-            var onCanvasClick = function (event) {
+            const onCanvasClick = function (event) {
                 event.preventDefaultAction = true;
             };
-            var onCanvasDrag = function (event) {
+            const onCanvasDrag = function (event) {
                 event.preventDefaultAction = true;
             };
             viewer.addHandler("canvas-click", onCanvasClick);
             viewer.addHandler("canvas-drag", onCanvasDrag);
 
-            var originalZoom = viewer.viewport.getZoom();
-            var originalBounds = viewer.viewport.getBounds();
+            const originalZoom = viewer.viewport.getZoom();
+            const originalBounds = viewer.viewport.getBounds();
 
             simulateClickAndDrag();
 
-            var zoom = viewer.viewport.getZoom();
-            var bounds = viewer.viewport.getBounds();
+            let zoom = viewer.viewport.getZoom();
+            let bounds = viewer.viewport.getBounds();
             Util.assessNumericValue(assert, zoom, originalZoom, epsilon,
                 "Zoom should be prevented");
             Util.assertRectangleEquals(assert, bounds, originalBounds, epsilon,
@@ -806,33 +1007,33 @@
 
     // ----------
     QUnit.test('Viewer: preventDefaultAction in dblClickHandler', function(assert) {
-        var done = assert.async();
-        var epsilon = 0.0000001;
-        var $canvas = $( viewer.element ).find( '.openseadragon-canvas' ).not( '.navigator .openseadragon-canvas' ),
+        const done = assert.async();
+        const epsilon = 0.0000001;
+        const $canvas = $( viewer.element ).find( '.openseadragon-canvas' ).not( '.navigator .openseadragon-canvas' ),
             simEvent = {},
             offset = $canvas.offset();
 
-        var simulateEnter = function (x, y) {
+        const simulateEnter = function (x, y) {
             simEvent.clientX = offset.left + x;
             simEvent.clientY = offset.top + y;
             $canvas.simulate( 'mouseenter', simEvent );
         };
 
-        var simulateLeave = function (x, y) {
+        const simulateLeave = function (x, y) {
             simEvent.clientX = offset.left + x;
             simEvent.clientY = offset.top + y;
             simEvent.relatedTarget = document.body;
             $canvas.simulate( 'mouseleave', simEvent );
         };
 
-        var simulateDown = function (x, y) {
+        const simulateDown = function (x, y) {
             simEvent.button = 0;
             simEvent.clientX = offset.left + x;
             simEvent.clientY = offset.top + y;
             $canvas.simulate( 'mousedown', simEvent );
         };
 
-        var simulateUp = function (x, y) {
+        const simulateUp = function (x, y) {
             simEvent.button = 0;
             simEvent.clientX = offset.left + x;
             simEvent.clientY = offset.top + y;
@@ -848,18 +1049,18 @@
             simulateLeave(-1, -1);
         }
 
-        var onOpen = function() {
+        const onOpen = function() {
             viewer.removeHandler('open', onOpen);
 
-            var origClickSetting = viewer.gestureSettingsMouse.clickToZoom;
-            var origDblClickSetting = viewer.gestureSettingsMouse.dblClickToZoom;
+            const origClickSetting = viewer.gestureSettingsMouse.clickToZoom;
+            const origDblClickSetting = viewer.gestureSettingsMouse.dblClickToZoom;
 
             viewer.gestureSettingsMouse.clickToZoom = false;
             viewer.gestureSettingsMouse.dblClickToZoom = true;
 
-            var originalZoom = viewer.viewport.getZoom();
+            let originalZoom = viewer.viewport.getZoom();
 
-            var onCanvasDblClick = function (event) {
+            const onCanvasDblClick = function (event) {
                 event.preventDefaultAction = true;
             };
 
@@ -867,7 +1068,7 @@
 
             simulateDblTap();
 
-            var zoom = viewer.viewport.getZoom();
+            let zoom = viewer.viewport.getZoom();
             Util.assessNumericValue(assert, zoom, originalZoom, epsilon,
                 "Zoom on double tap should be prevented");
 
@@ -895,25 +1096,25 @@
 
     // ----------
     QUnit.test( 'EventSource/MouseTracker/Viewer: event.originalEvent event.userData canvas-drag canvas-drag-end canvas-release canvas-click', function (assert) {
-        var done = assert.async();
-        var $canvas = $( viewer.element ).find( '.openseadragon-canvas' ).not( '.navigator .openseadragon-canvas' ),
-            mouseTracker = null,
-            userData = { item1: 'Test user data', item2: Math.random() },
-            originalUserData = { item1: userData.item1, item2: userData.item2 },
-            dragCount = 10,
-            dragsHandledEventSource = 0,
-            dragEndsHandledEventSource = 0,
-            releasesHandledEventSource = 0,
-            clicksHandledEventSource = 0,
-            eventsHandledMouseTracker = 0,
-            eventSourcePassedMouseTracker = 0,
-            originalEventsPassedMouseTracker = 0,
-            eventsHandledViewer = 0,
-            originalEventsPassedViewer = 0,
-            dragEndsExpected = 1,
-            releasesExpected = 1;
+        const done = assert.async();
+        const $canvas = $( viewer.element ).find( '.openseadragon-canvas' ).not( '.navigator .openseadragon-canvas' );
+        let mouseTracker = null;
+        const userData = { item1: 'Test user data', item2: Math.random() };
+        const originalUserData = { item1: userData.item1, item2: userData.item2 };
+        const dragCount = 10;
+        let dragsHandledEventSource = 0;
+        let dragEndsHandledEventSource = 0;
+        let releasesHandledEventSource = 0;
+        let clicksHandledEventSource = 0;
+        let eventsHandledMouseTracker = 0;
+        let eventSourcePassedMouseTracker = 0;
+        let originalEventsPassedMouseTracker = 0;
+        let eventsHandledViewer = 0;
+        let originalEventsPassedViewer = 0;
+        const dragEndsExpected = 1;
+        const releasesExpected = 1;
 
-        var checkOriginalEventReceivedViewer = function ( event ) {
+        const checkOriginalEventReceivedViewer = function ( event ) {
             eventsHandledViewer++;
             //TODO Provide a better check for the original event...simulate doesn't currently extend the object
             //   with arbitrary user data.
@@ -922,27 +1123,27 @@
             }
         };
 
-        var onEventSourceDrag = function ( event ) {
+        const onEventSourceDrag = function ( event ) {
             checkOriginalEventReceivedViewer( event );
             dragsHandledEventSource++;
         };
 
-        var onEventSourceDragEnd = function ( event ) {
+        const onEventSourceDragEnd = function ( event ) {
             checkOriginalEventReceivedViewer( event );
             dragEndsHandledEventSource++;
         };
 
-        var onEventSourceRelease = function ( event ) {
+        const onEventSourceRelease = function ( event ) {
             checkOriginalEventReceivedViewer( event );
             releasesHandledEventSource++;
         };
 
-        var onEventSourceClick = function ( event ) {
+        const onEventSourceClick = function ( event ) {
             checkOriginalEventReceivedViewer( event );
             clicksHandledEventSource++;
         };
 
-        var checkOriginalEventReceived = function ( event ) {
+        const checkOriginalEventReceived = function ( event ) {
             eventsHandledMouseTracker++;
             if ( event && event.eventSource === mouseTracker ) {
                 eventSourcePassedMouseTracker++;
@@ -954,43 +1155,43 @@
             }
         };
 
-        var onMouseTrackerFocus = function ( event ) {
+        const onMouseTrackerFocus = function ( event ) {
             checkOriginalEventReceived( event );
         };
 
-        var onMouseTrackerBlur = function ( event ) {
+        const onMouseTrackerBlur = function ( event ) {
             checkOriginalEventReceived( event );
         };
 
-        var onMouseTrackerEnter = function ( event ) {
+        const onMouseTrackerEnter = function ( event ) {
             checkOriginalEventReceived( event );
         };
 
-        var onMouseTrackerPress = function ( event ) {
+        const onMouseTrackerPress = function ( event ) {
             checkOriginalEventReceived( event );
         };
 
-        var onMouseTrackerMove = function ( event ) {
+        const onMouseTrackerMove = function ( event ) {
             checkOriginalEventReceived( event );
         };
 
-        var onMouseTrackerDrag = function ( event ) {
+        const onMouseTrackerDrag = function ( event ) {
             checkOriginalEventReceived( event );
         };
 
-        var onMouseTrackerDragEnd = function ( event ) {
+        const onMouseTrackerDragEnd = function ( event ) {
             checkOriginalEventReceived( event );
         };
 
-        var onMouseTrackerRelease = function ( event ) {
+        const onMouseTrackerRelease = function ( event ) {
             checkOriginalEventReceived( event );
         };
 
-        var onMouseTrackerClick = function ( event ) {
+        const onMouseTrackerClick = function ( event ) {
             checkOriginalEventReceived( event );
         };
 
-        var onMouseTrackerLeave = function ( event ) {
+        const onMouseTrackerLeave = function ( event ) {
             checkOriginalEventReceived( event );
 
             mouseTracker.destroy();
@@ -1012,7 +1213,7 @@
             done();
         };
 
-        var onOpen = function ( ) {
+        const onOpen = function ( ) {
             viewer.removeHandler( 'open', onOpen );
 
             viewer.addHandler( 'canvas-drag', onEventSourceDrag );
@@ -1039,7 +1240,7 @@
                 leaveHandler: onMouseTrackerLeave
             } );
 
-            var event = {
+            const event = {
                 clientX: 1,
                 clientY: 1
             };
@@ -1062,8 +1263,8 @@
 
     // ----------
     QUnit.test( 'EventSource: addHandler without userData', function (assert) {
-        var done = assert.async();
-        var openHandler = function ( event ) {
+        const done = assert.async();
+        const openHandler = function ( event ) {
             viewer.removeHandler( 'open', openHandler );
             assert.ok( event, 'Event handler received event data' );
             if ( event ) {
@@ -1080,11 +1281,11 @@
 
     // ----------
     QUnit.test( 'EventSource: addHandler with userData', function (assert) {
-        var done = assert.async();
-        var userData = { item1: 'Test user data', item2: Math.random() },
+        const done = assert.async();
+        const userData = { item1: 'Test user data', item2: Math.random() },
             originalUserData = { item1: userData.item1, item2: userData.item2 };
 
-        var openHandler = function ( event ) {
+        const openHandler = function ( event ) {
             viewer.removeHandler( 'open', openHandler );
             assert.ok( event, 'Event handler received event data' );
             assert.ok( event && event.userData, 'Event handler received user data' );
@@ -1101,12 +1302,12 @@
 
     // ----------
     QUnit.test('EventSource: addOnceHandler', function(assert) {
-        var eventSource = new OpenSeadragon.EventSource();
-        var userData = 'data';
-        var eventData = {
+        const eventSource = new OpenSeadragon.EventSource();
+        const userData = 'data';
+        const eventData = {
             foo: 1
         };
-        var handlerCalledCount = 0;
+        let handlerCalledCount = 0;
         eventSource.addOnceHandler('test-event', function(event) {
             handlerCalledCount++;
             assert.strictEqual(event.foo, eventData.foo,
@@ -1126,12 +1327,12 @@
 
     // ----------
     QUnit.test('EventSource: addOnceHandler 2 times', function(assert) {
-        var eventSource = new OpenSeadragon.EventSource();
-        var userData = 'data';
-        var eventData = {
+        const eventSource = new OpenSeadragon.EventSource();
+        const userData = 'data';
+        const eventData = {
             foo: 1
         };
-        var handlerCalledCount = 0;
+        let handlerCalledCount = 0;
         eventSource.addOnceHandler('test-event', function(event) {
             handlerCalledCount++;
             assert.strictEqual(event.foo, eventData.foo,
@@ -1154,7 +1355,7 @@
 
     // ----------
     QUnit.test( 'Viewer: event count test with \'tile-drawing\'', function (assert) {
-        var done = assert.async();
+        const done = assert.async();
         if(viewer.drawer.getType() !== 'canvas'){
             assert.expect(0);
             done();
@@ -1164,7 +1365,7 @@
         assert.ok(viewer.numberOfHandlers('tile-drawing') === 0,
             "'tile-drawing' event is empty by default.");
 
-        var tileDrawing = function ( event ) {
+        const tileDrawing = function ( event ) {
             viewer.removeHandler( 'tile-drawing', tileDrawing );
             assert.ok(viewer.numberOfHandlers('tile-drawing') === 0,
                 "'tile-drawing' deleted: count is 0.");
@@ -1173,7 +1374,7 @@
             done();
         };
 
-        var tileDrawingDummy = function ( event ) {};
+        const tileDrawingDummy = function ( event ) {};
 
         viewer.addHandler( 'tile-drawing', tileDrawing );
         assert.ok(viewer.numberOfHandlers('tile-drawing') === 1,
@@ -1191,14 +1392,14 @@
     } );
 
     QUnit.test( 'Viewer: tile-drawing event', function (assert) {
-        var done = assert.async();
+        const done = assert.async();
         if(viewer.drawer.getType() !== 'canvas'){
             assert.expect(0);
             done();
             return;
         }
 
-        var tileDrawing = function ( event ) {
+        const tileDrawing = function ( event ) {
             viewer.removeHandler( 'tile-drawing', tileDrawing );
             assert.ok( event, 'Event handler should be invoked' );
             if ( event ) {
@@ -1217,10 +1418,10 @@
 
     // tile-loaded event tests
     QUnit.test( 'Viewer: tile-loaded event without callback.', function (assert) {
-        var done = assert.async();
+        const done = assert.async();
         function tileLoaded ( event ) {
             viewer.removeHandler( 'tile-loaded', tileLoaded);
-            var tile = event.tile;
+            const tile = event.tile;
             assert.ok( tile.loading, "The tile should be marked as loading.");
             assert.notOk( tile.loaded, "The tile should not be marked as loaded.");
             //make sure we require tile loaded status once the data is ready
@@ -1236,10 +1437,10 @@
     } );
 
     QUnit.test( 'Viewer: tile-loaded event with 1 callback.', function (assert) {
-        var done = assert.async();
+        const done = assert.async();
         function tileLoaded ( event ) {
             viewer.removeHandler( 'tile-loaded', tileLoaded);
-            var tile = event.tile;
+            const tile = event.tile;
             assert.ok( tile.loading, "The tile should be marked as loading.");
             assert.notOk( tile.loaded, "The tile should not be marked as loaded.");
             event.promise.then( _ => {
@@ -1254,8 +1455,8 @@
     } );
 
     QUnit.test( 'Viewer: asynchronous tile processing.', function (assert) {
-        var done = assert.async(),
-            handledOnce = false;
+        let done = assert.async();
+        let handledOnce = false;
 
         const tileLoaded1 = async (event) => {
             assert.ok( handledOnce, "tileLoaded1 with priority 5 should be called second.");
@@ -1299,9 +1500,9 @@
     } );
 
     QUnit.test( 'Viewer: tile-unloaded event.', function(assert) {
-        var tiledImage;
-        var tiles = [];
-        var done = assert.async();
+        let tiledImage;
+        const tiles = [];
+        const done = assert.async();
 
         function tileLoaded( event ) {
             tiledImage = event.tiledImage;
