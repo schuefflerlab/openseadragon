@@ -218,6 +218,11 @@ declare namespace OpenSeadragon {
 
     function setElementPointerEventsNone(element: Element | string): void;
 
+    function setElementTouchAction(
+        element: Element | string,
+        value: string,
+    ): void;
+
     function setElementTouchActionNone(element: Element | string): void;
 
     function setImageFormatsSupported(formats: {
@@ -269,7 +274,9 @@ declare namespace OpenSeadragon {
     }
 
     type DrawerType = "auto" | "html" | "canvas" | "webgl";
-    type DrawerConstructor = new (options: DrawerConstructorParameters) => DrawerBase;
+    type DrawerConstructor = new (
+        options: DrawerConstructorParameters,
+    ) => DrawerBase;
     type TypeConverter<TIn = any, TOut = any> = (
         tile: Tile,
         data: TIn,
@@ -391,6 +398,7 @@ declare namespace OpenSeadragon {
         springStiffness?: number;
         animationTime?: number;
         loadDestinationTilesOnAnimation?: boolean;
+        cooperativeGestures?: boolean;
         gestureSettingsMouse?: GestureSettings;
         gestureSettingsTouch?: GestureSettings;
         gestureSettingsPen?: GestureSettings;
@@ -420,6 +428,7 @@ declare namespace OpenSeadragon {
         navigatorOpacity?: number;
         navigatorBorderColor?: string;
         navigatorDisplayRegionColor?: string;
+        navigatorDrawer?: string | string[];
         controlsFadeDelay?: number;
         controlsFadeLength?: number;
         maxImageCacheCount?: number;
@@ -508,13 +517,23 @@ declare namespace OpenSeadragon {
         srcDown?: string;
         fadeDelay?: number;
         fadeLength?: number;
-        onPress?: EventHandler<ButtonEvent>;
-        onRelease?: EventHandler<ButtonEvent>;
-        onClick?: EventHandler<ButtonEvent>;
-        onEnter?: EventHandler<ButtonEvent>;
-        onExit?: EventHandler<ButtonEvent>;
-        onFocus?: EventHandler<ButtonEvent>;
-        onBlur?: EventHandler<ButtonEvent>;
+        onPress?: EventHandler<
+            ButtonEvent<MouseEvent | TouchEvent | PointerEvent>
+        >;
+        onRelease?: EventHandler<
+            ButtonEvent<MouseEvent | TouchEvent | PointerEvent | KeyboardEvent>
+        >;
+        onClick?: EventHandler<
+            ButtonEvent<MouseEvent | TouchEvent | PointerEvent | KeyboardEvent>
+        >;
+        onEnter?: EventHandler<
+            ButtonEvent<MouseEvent | TouchEvent | PointerEvent>
+        >;
+        onExit?: EventHandler<
+            ButtonEvent<MouseEvent | TouchEvent | PointerEvent>
+        >;
+        onFocus?: EventHandler<ButtonEvent<FocusEvent>>;
+        onBlur?: EventHandler<ButtonEvent<FocusEvent>>;
     }
 
     class Button extends EventSource<ButtonEventMap> {
@@ -809,13 +828,13 @@ declare namespace OpenSeadragon {
     class EventSource<EventMap extends Record<string, any> = any> {
         addHandler<K extends keyof EventMap>(
             eventName: K,
-            handler: EventHandler<EventMap[K]>,
+            handler: EventHandler<EventMap[K]> | AsyncEventHandler<EventMap[K]>,
             userData?: object,
             priority?: number,
         ): boolean;
         addOnceHandler<K extends keyof EventMap>(
             eventName: K,
-            handler: EventHandler<EventMap[K]>,
+            handler: EventHandler<EventMap[K]> | AsyncEventHandler<EventMap[K]>,
             userData?: object,
             times?: number,
             priority?: number,
@@ -823,23 +842,25 @@ declare namespace OpenSeadragon {
         getAwaitingHandler<K extends keyof EventMap>(
             eventName: K,
             bindTarget: any,
-        ): null | Promise<any>;
-        getHandler<K extends keyof EventMap>(eventName: K): void;
+        ): (source: EventSource<EventMap>, eventArgs: object) => Promise<any>;
+        getHandler<K extends keyof EventMap>(
+            eventName: K,
+        ): (source: EventSource<EventMap>, eventArgs: object) => void;
         numberOfHandlers<K extends keyof EventMap>(eventName: K): number;
         raiseEvent<K extends keyof EventMap>(
             eventName: K,
-            eventArgs: object,
+            eventArgs?: object,
         ): boolean;
         raiseEventAwaiting<K extends keyof EventMap>(
             eventName: K,
-            eventArgs: object | undefined,
-            bindTarget: any,
-        ): Promise<any> | undefined;
-        removeAllHandlers<K extends keyof EventMap>(eventName: K): boolean;
+            eventArgs?: object,
+            bindTarget?: any,
+        ): Promise<any>;
+        removeAllHandlers<K extends keyof EventMap>(eventName: K): void;
         removeHandler<K extends keyof EventMap>(
             eventName: K,
-            handler: EventHandler<EventMap[K]>,
-        ): boolean;
+            handler: EventHandler<EventMap[K]> | AsyncEventHandler<EventMap[K]>,
+        ): void;
     }
 
     class HTMLDrawer extends DrawerBase {
@@ -853,6 +874,7 @@ declare namespace OpenSeadragon {
         levelSizes?: Array<{ width: number; height: number }>;
         scale_factors?: number[];
         tileFormat: string;
+        tileQuality?: string;
         tiles?: Array<{
             width: number;
             height?: number;
@@ -860,7 +882,12 @@ declare namespace OpenSeadragon {
         }>;
         version: number;
 
-        constructor(options: TileSourceOptions & { tileFormat?: string });
+        constructor(
+            options: TileSourceOptions & {
+                tileFormat?: string;
+                tileQuality?: string;
+            },
+        );
     }
 
     interface IrisTileSourceOptions extends TileSourceOptions {
@@ -930,7 +957,7 @@ declare namespace OpenSeadragon {
         src?: string;
         tile?: Tile;
         source?: TileSource;
-        loadWithAjax?: string;
+        loadWithAjax?: boolean;
         ajaxHeaders?: Record<string, string>;
         ajaxWithCredentials?: boolean;
         crossOriginPolicy?: string;
@@ -1098,6 +1125,7 @@ declare namespace OpenSeadragon {
         dblClickDistThreshold?: number;
         stopDelay?: number;
         userData?: unknown;
+        cooperativeGestureHandling?: boolean;
 
         preProcessEventHandler?: EventHandler<PreProcessMouseTrackerEvent>;
         keyDownHandler?: EventHandler<KeyMouseTrackerEvent>;
@@ -1134,10 +1162,12 @@ declare namespace OpenSeadragon {
         dblClickDistThreshold: number;
         stopDelay: number;
         userData: unknown;
+        cooperativeGestureHandling: boolean;
 
         destroy(): void;
         /** @deprecated use `this.tracking` */
         isTracking(): boolean;
+        setCooperativeGestureHandling(enabled: boolean): MouseTracker;
         setTracking(track: boolean): MouseTracker;
         getActivePointersListByType(type: string): GesturePointList;
         getActivePointerCount(): number;
@@ -1846,6 +1876,7 @@ declare namespace OpenSeadragon {
         ): object | boolean;
         requestInvalidate(restoreTiles?: boolean): Promise<any>;
         setAjaxHeaders(ajaxHeaders: object, propagate?: boolean): void;
+        setCooperativeGestures(enabled: boolean): Viewer;
         setDebugMode(debug: boolean): Viewer;
         setFullPage(fullScreen: boolean): Viewer;
         setFullScreen(fullScreen: boolean): Viewer;
@@ -2090,15 +2121,20 @@ declare namespace OpenSeadragon {
     }
 
     type EventHandler<T> = (event: T) => void;
+    type AsyncEventHandler<T> = (event: T) => Promise<void>;
 
     interface ButtonEventMap {
-        blur: ButtonEvent;
-        click: ButtonEvent;
-        enter: ButtonEvent;
-        exit: ButtonEvent;
-        focus: ButtonEvent;
-        press: ButtonEvent;
-        release: ButtonEvent;
+        blur: ButtonEvent<FocusEvent>;
+        click: ButtonEvent<
+            MouseEvent | TouchEvent | PointerEvent | KeyboardEvent
+        >;
+        enter: ButtonEvent<MouseEvent | TouchEvent | PointerEvent>;
+        exit: ButtonEvent<MouseEvent | TouchEvent | PointerEvent>;
+        focus: ButtonEvent<FocusEvent>;
+        press: ButtonEvent<MouseEvent | TouchEvent | PointerEvent>;
+        release: ButtonEvent<
+            MouseEvent | TouchEvent | PointerEvent | KeyboardEvent
+        >;
     }
 
     interface TiledImageEventMap {
@@ -2125,14 +2161,15 @@ declare namespace OpenSeadragon {
         "canvas-blur": CanvasTrackerEvent;
         "canvas-click": CanvasClickEvent;
         "canvas-contextmenu": CanvasContextMenuEvent;
+        "canvas-cooperative-gesture": CanvasCooperativeGestureEvent;
         "canvas-double-click": CanvasDoubleClickEvent;
         "canvas-drag": CanvasDragEvent;
-        "canvas-drag-end": CanvasDragEvent;
-        "canvas-enter": CanvasEnterEvent;
-        "canvas-exit": CanvasExitEvent;
+        "canvas-drag-end": Omit<CanvasDragEvent, "delta">;
+        "canvas-enter": CanvasEnterExitEvent;
+        "canvas-exit": CanvasEnterExitEvent;
         "canvas-focus": CanvasTrackerEvent;
         "canvas-key": CanvasKeyEvent;
-        "canvas-key-press": CanvasOriginalEvent;
+        "canvas-key-press": CanvasOriginalKeyEvent;
         "canvas-nonprimary-press": CanvasNonPrimaryButtonEvent;
         "canvas-nonprimary-release": CanvasNonPrimaryButtonEvent;
         "canvas-pinch": CanvasPinchEvent;
@@ -2174,6 +2211,7 @@ declare namespace OpenSeadragon {
         "tile-load-failed": TileLoadFailedEvent;
         "tile-loaded": TileLoadedEvent;
         "tile-unloaded": TileUnloadedEvent;
+        "tiled-image-drawn": TiledImageDrawnEvent;
         "update-level": UpdateLevelEvent;
         "update-overlay": UpdateOverlayEvent;
         "update-tile": TileEvent;
@@ -2192,21 +2230,21 @@ declare namespace OpenSeadragon {
         "remove-item": RemoveItemWorldEvent;
     }
 
-    interface OSDEvent<T> {
+    interface OSDEvent<T extends EventSource> {
         eventSource: T;
         userData: unknown;
         stopPropagation?: boolean | (() => boolean);
     }
 
-    interface ButtonEvent extends OSDEvent<Button> {
-        originalEvent: Event;
+    interface ButtonEvent<T extends UIEvent> extends OSDEvent<Button> {
+        originalEvent: T;
     }
 
     // -- TILED IMAGE EVENTS --
     interface TiledImageEvent extends OSDEvent<TiledImage> {}
 
     interface CompositeOperationChangeTiledImageEvent extends TiledImageEvent {
-        compositeOperationChange: string;
+        compositeOperation: string;
     }
 
     interface FullyLoadedChangeTiledImageEvent extends TiledImageEvent {
@@ -2214,7 +2252,7 @@ declare namespace OpenSeadragon {
     }
 
     interface OpacityChangeTiledImageEvent extends TiledImageEvent {
-        opacity: boolean;
+        opacity: number;
     }
 
     // -- TILE SOURCE EVENTS --
@@ -2223,10 +2261,11 @@ declare namespace OpenSeadragon {
     interface OpenFailedTileSourceEvent extends TileSourceEvent {
         message: string;
         source: string;
+        postData?: string;
     }
 
     interface ReadyTileSourceEvent extends TileSourceEvent {
-        tileSource: object;
+        tileSource: TileSource;
     }
 
     // -- VIEWER EVENTS --
@@ -2253,6 +2292,14 @@ declare namespace OpenSeadragon {
         originalEvent: Event;
     }
 
+    interface CanvasOriginalKeyEvent extends ViewerEvent {
+        originalEvent: KeyboardEvent;
+    }
+
+    interface CanvasOriginalPointerEvent extends ViewerEvent {
+        originalEvent: MouseEvent | PointerEvent | TouchEvent;
+    }
+
     interface CanvasTrackerEvent extends CanvasOriginalEvent {
         tracker: MouseTracker;
     }
@@ -2272,6 +2319,13 @@ declare namespace OpenSeadragon {
         preventDefault: boolean;
     }
 
+    interface CanvasCooperativeGestureEvent extends CanvasEvent {
+        pointerType: PointerType;
+        gesture: "drag" | "scroll";
+        message: string;
+        preventDefaultAction: boolean;
+    }
+
     interface CanvasDoubleClickEvent extends CanvasEvent {
         shift: boolean;
         preventDefaultAction: boolean;
@@ -2286,7 +2340,7 @@ declare namespace OpenSeadragon {
         preventDefaultAction: boolean;
     }
 
-    interface CanvasEnterEvent extends CanvasEvent {
+    interface CanvasEnterExitEvent extends CanvasEvent {
         pointerType: PointerType;
         buttons: number;
         pointers: number;
@@ -2297,18 +2351,7 @@ declare namespace OpenSeadragon {
         buttonDownAny: boolean;
     }
 
-    interface CanvasExitEvent extends CanvasEvent {
-        pointerType: PointerType;
-        buttons: number;
-        pointers: number;
-        insideElementPressed: boolean;
-        /**
-         * @deprecated Use `buttons` instead
-         */
-        buttonDownAny: boolean;
-    }
-
-    interface CanvasKeyEvent extends CanvasEvent {
+    interface CanvasKeyEvent extends CanvasOriginalKeyEvent {
         preventDefaultAction: boolean;
         preventVerticalPan: boolean;
         preventHorizontalPan: boolean;
@@ -2318,9 +2361,10 @@ declare namespace OpenSeadragon {
         pointerType: PointerType;
         button: number;
         buttons: number;
+        originalEvent: MouseEvent | PointerEvent;
     }
 
-    interface CanvasPinchEvent extends CanvasEvent {
+    interface CanvasPinchEvent extends CanvasTrackerEvent {
         pointerType: PointerType;
         gesturePoints: GesturePoint[];
         lastCenter: Point;
@@ -2335,12 +2379,9 @@ declare namespace OpenSeadragon {
 
     interface CanvasPressEvent extends CanvasEvent {
         pointerType: PointerType;
-        insideElementPressed: boolean;
-        insideElementReleased: boolean;
     }
 
-    interface CanvasReleaseEvent extends CanvasEvent {
-        pointerType: PointerType;
+    interface CanvasReleaseEvent extends CanvasPressEvent {
         insideElementPressed: boolean;
         insideElementReleased: boolean;
     }
@@ -2367,7 +2408,7 @@ declare namespace OpenSeadragon {
          * @deprecated Use `buttons` instead
          */
         buttonDownAny: boolean;
-        originalEvent: Event;
+        originalEvent: MouseEvent | PointerEvent | TouchEvent;
     }
 
     interface ControlsEnabledEvent extends ViewerEvent {
@@ -2381,7 +2422,7 @@ declare namespace OpenSeadragon {
     }
 
     interface FlipEvent extends ViewerEvent {
-        flipped: number;
+        flipped: boolean;
     }
 
     interface FullPageEvent extends ViewerEvent {
@@ -2416,7 +2457,7 @@ declare namespace OpenSeadragon {
         tracker: MouseTracker;
         position: Point;
         shift: boolean;
-        originalEvent: Event;
+        originalEvent: MouseEvent | PointerEvent | TouchEvent;
     }
 
     interface NavigatorClickEvent extends NavigatorEvent {
@@ -2481,6 +2522,8 @@ declare namespace OpenSeadragon {
 
     interface RotateEvent extends ViewerEvent {
         degrees: number;
+        immediately: boolean;
+        pivot: Point;
     }
 
     interface TileEvent extends ViewerEvent {
@@ -2489,8 +2532,13 @@ declare namespace OpenSeadragon {
     }
 
     interface TileDrawingEvent extends TileEvent {
-        context: Tile;
-        rendered: Tile;
+        context: CanvasRenderingContext2D;
+        rendered: CanvasRenderingContext2D;
+    }
+
+    interface TiledImageDrawnEvent extends ViewerEvent {
+        tiledImage: TiledImage;
+        tiles: Tile[];
     }
 
     interface TileInvalidatedEvent extends TileEvent {
@@ -2504,12 +2552,13 @@ declare namespace OpenSeadragon {
         time: number;
         message: string;
         tileRequest: XMLHttpRequest;
+        tries: number;
+        maxReached: boolean;
     }
 
     interface TileLoadedEvent extends TileEvent {
-        image: HTMLImageElement;
         tileRequest: XMLHttpRequest;
-        getCompletionCallback: () => () => void;
+        promise: Promise<unknown>;
     }
 
     interface TileUnloadedEvent extends TileEvent {

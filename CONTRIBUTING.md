@@ -55,6 +55,21 @@ You can also publish the built version to the site-build repository. This assume
 
 ... which will delete the existing openseadragon folder, along with the .zip and .tar.gz files, out of the site-build folder and replace them with newly built ones from the source in this repository; you'll then need to commit the changes to site-build.
 
+### Bundle Size Analysis
+
+To ensure OpenSeadragon stays lean and fast, we track bundle sizes and enforce limits. To check bundle size:
+
+    npm run bundlesize
+
+This will show you the current bundle sizes and whether they're within the limits configured in `package.json`.
+
+**Automated PR Comments**: When you open a PR, a bot will automatically comment with bundle size comparisons showing how your changes affect the bundle size compared to the base branch.
+
+The bundle size check runs automatically in CI/CD, and PRs will fail if bundle sizes exceed these limits. If your changes cause the bundle to grow significantly, consider:
+- Removing unused code
+- Optimizing imports
+- Refactoring large features
+
 ### Testing
 
 Our tests are based on [QUnit](https://qunitjs.com/) and [Puppeteer](https://github.com/GoogleChrome/puppeteer); they're both installed when you run `npm install`. To run on the command line:
@@ -78,7 +93,7 @@ and open `http://localhost:8000/test/test.html` in your browser.
 Another good page, if you want to interactively test out your changes, is `http://localhost:8000/test/demo/basic.html`.
 
 
-> [!NOTE] 
+> [!NOTE]
 > corresponding npm commands for the above are:
 >  - npm run test
 >  - npm run test -- --module="navigator"
@@ -89,6 +104,13 @@ You can also get a report of the tests' code coverage:
     grunt coverage
 
 The report shows up at `coverage/html/index.html` viewable in a browser.
+
+### Building and Testing Documentation
+
+* Clone https://github.com/openseadragon/site-build to your hard drive in a sibling folder named exactly `site-build` next to this repository, and do an `npm install` in it.
+* In this repository, do `grunt publish`; that will build the code and send a copy over to the `site-build` folder.
+* In this `site-build` folder, do a `grunt doc`. That will build the JSDocs.
+* Run `grunt dev` there. That'll start a server at localhost:9000 so you can see the docs.
 
 ### Installing from forked Github repo/branch
 
