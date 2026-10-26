@@ -218,9 +218,6 @@ module.exports = function(grunt) {
             tasks: "watchTask"
         },
         eslint: {
-            options: {
-                overrideConfigFile: '.eslintrc.json'
-            },
             target: sources
         },
         "git-describe": {
